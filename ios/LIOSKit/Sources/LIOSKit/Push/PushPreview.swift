@@ -6,14 +6,14 @@ import Foundation
 ///
 /// 🚨 Not yet part of `lios_protocol.wire` — the relay only has clear metadata (`ItemSummary`)
 /// and the sealed item blob to work with, and it cannot compose a preview itself because it
-/// never holds the group key (the design's whole point). This is this app's proposed
+/// never holds the group key, which is the whole point of it. This is this app's proposed
 /// extension to the wire contract: the sender seals a `PushPreview` under the same group key,
 /// sends it alongside the item as opaque bytes the relay stores and forwards verbatim inside the
 /// APNs payload's `sealed_preview` field (see `PushPayload`), and the relay never has to
 /// understand it to relay it. If the relay does not yet carry this field, `PushPayload.decode`
 /// simply finds no preview and the NSE falls back to a generic banner — nothing breaks, but the
-/// zero-open-taps-for-context experience the user asked for needs the relay and the Linux sender to
-/// pick this up too.
+/// point of it — seeing what arrived without opening the app — needs the relay and the Linux
+/// sender to carry the field too.
 public struct PushPreview: Codable, Sendable {
     public let type: ItemType
     /// A short prefix of the text, for a text item only. Never set for image or file, so a

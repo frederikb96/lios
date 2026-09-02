@@ -3,8 +3,8 @@ import SwiftUI
 import UIKit
 
 /// Wraps `UIActivityViewController` for SwiftUI — there is no first-party SwiftUI share sheet.
-/// Used for both the receive path (the design: image or file opens on the item so it can be
-/// saved or forwarded) and the log export (the design).
+/// Used for both the receive path (an image or file opens on the item so it can be saved or
+/// forwarded) and the log export.
 struct ActivityView: UIViewControllerRepresentable {
     let items: [Any]
 

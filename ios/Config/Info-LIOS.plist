@@ -9,7 +9,7 @@
 	     build-setting form reaches an array-valued key is exactly the kind of thing that fails
 	     silently and reads as a platform restriction rather than a missing declaration. The Mac
 	     workflow should assert this key survives into the built bundle alongside a generated
-	     one, the same way pai-ios's does. -->
+	     one. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

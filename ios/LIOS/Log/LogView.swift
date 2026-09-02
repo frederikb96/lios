@@ -1,7 +1,7 @@
 import LIOSKit
 import SwiftUI
 
-/// the design's requirement: a log view with one-tap export from the first version. A
+/// A log view with one-tap export, present from the first version. A
 /// TestFlight build has no debugger attached, so this is the only way an item that silently
 /// failed to arrive is ever diagnosable.
 struct LogView: View {

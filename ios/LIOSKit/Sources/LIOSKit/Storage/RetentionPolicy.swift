@@ -1,7 +1,7 @@
 import Foundation
 
-/// the design's policy, shared by both clients: keep the last N items for M days, then
-/// expire. Configurable in the app, defaulting to what the design settled on.
+/// The retention policy, shared by both clients: keep the last N items for M days, then
+/// expire. Configurable in the app.
 public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var maxItems: Int
     public var maxAge: TimeInterval

@@ -36,11 +36,11 @@ final class WireModelsTests: XCTestCase {
     }
 
     func testEncodesPairingRedeemWithSnakeCaseFieldNames() throws {
-        let redeem = PairingRedeem(pairingCode: "ABCD1234", platform: .ios, displayName: "the user's iPhone")
+        let redeem = PairingRedeem(pairingCode: "ABCD1234", platform: .ios, displayName: "My iPhone")
         let data = try makeEncoder().encode(redeem)
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(object["pairing_code"] as? String, "ABCD1234")
-        XCTAssertEqual(object["display_name"] as? String, "the user's iPhone")
+        XCTAssertEqual(object["display_name"] as? String, "My iPhone")
         XCTAssertEqual(object["platform"] as? String, "ios")
     }
 

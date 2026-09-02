@@ -1,10 +1,10 @@
 import Foundation
 
-/// The in-app log every screen and background path writes to, and the log view (the design)
-/// reads and exports from with one tap.
+/// The in-app log every screen and background path writes to, and the log view reads and
+/// exports from with one tap.
 ///
 /// A TestFlight build has no debugger attached, so this ring buffer is the only way an item that
-/// silently failed to arrive is ever diagnosable — the user sees the buffer, not a console. Kept as
+/// silently failed to arrive is ever diagnosable — you see the buffer, not a console. Kept as
 /// a lock-guarded singleton rather than an actor: nearly every call site is a synchronous log
 /// statement inside non-async code (a Keychain read, a decode failure), and awaiting each one
 /// would be friction with no benefit — the lock is held only for an array append.
