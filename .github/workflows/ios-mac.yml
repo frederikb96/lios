@@ -1,0 +1,134 @@
+# fixture sweep — extend it once a bridge exists.
+name: iOS Mac
+
+on:
+  pull_request:
+    paths: ["ios/**"]
+  workflow_dispatch:
+    inputs:
+      run_app:
+        description: 'Boot a simulator and run the app (slower; skip for a compile-only check)'
+        type: boolean
+        default: true
+      configuration:
+        description: 'Build configuration. Release before a release — DEBUG-only code compiles out, and that error surfaces nowhere else.'
+        type: choice
+        options: [Debug, Release]
+        default: Debug
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.6'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: dd-${{ runner.os }}-${{ hashFiles('ios/LIOSKit/Package.swift', 'ios/LIOS.xcodeproj/project.pbxproj') }}
+          restore-keys: dd-${{ runner.os }}-
+
+      # Builds the LIOS scheme, which embeds LIOSShare and LIOSNotify as target dependencies —
+      # one build proves all three targets compile and sign-check together.
+      - name: Build the app and both extensions
+        run: |
+          set -o pipefail
+          xcodebuild -project LIOS.xcodeproj -scheme LIOS \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration "${{ inputs.configuration || 'Debug' }}" -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee /tmp/build.log | tail -20
+
+      - name: Surface compiler errors
+        if: failure()
+        run: |
+          grep -E "error:" /tmp/build.log | head -40 || echo "no compiler errors in the log"
+
+      # The array-valued keys that a build-setting form of Info.plist cannot express, and whose
+      # loss reads as a platform restriction rather than a missing declaration.
+      - name: The built bundle declares what it needs
+        run: |
+          set -o pipefail
+          app=$(find build/dd/Build/Products -name 'LIOS.app' -maxdepth 3 | head -1)
+          [ -n "$app" ] || { echo 'build produced no LIOS.app'; exit 1; }
+          plutil -p "$app/Info.plist" > /tmp/built-info.txt
+          grep -q '"remote-notification"' /tmp/built-info.txt \
+            || { echo '::error::UIBackgroundModes is missing "remote-notification" — a silent push never wakes the app'; \
+                 cat /tmp/built-info.txt; exit 1; }
+          share_plist=$(find "$app/PlugIns" -maxdepth 1 -name 'LIOSShare.appex' | head -1)/Info.plist
+          plutil -p "$share_plist" > /tmp/share-info.txt
+          grep -q 'com.apple.share-services' /tmp/share-info.txt \
+            || { echo '::error::LIOSShare is missing its share-services extension point'; cat /tmp/share-info.txt; exit 1; }
+          notify_plist=$(find "$app/PlugIns" -maxdepth 1 -name 'LIOSNotify.appex' | head -1)/Info.plist
+          plutil -p "$notify_plist" > /tmp/notify-info.txt
+          grep -q 'com.apple.usernotifications.service' /tmp/notify-info.txt \
+            || { echo '::error::LIOSNotify is missing its notification-service extension point'; cat /tmp/notify-info.txt; exit 1; }
+          echo 'background mode and both extension points survived into the built bundle'
+
+      - name: Test what Linux cannot
+        run: swift test --package-path LIOSKit
+
+      - name: Boot a simulator
+        id: sim
+        if: inputs.run_app != false
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          devices = json.load(sys.stdin)['devices']
+          for runtime in sorted(devices, reverse=True):
+              if 'iOS' not in runtime: continue
+              for d in devices[runtime]:
+                  if d.get('isAvailable') and 'iPhone' in d['name']:
+                      print(d['udid']); raise SystemExit
+          ")
+          [ -n "$udid" ] || { echo 'no iPhone simulator available'; exit 1; }
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl ui "$udid" appearance dark
+
+      - name: Install and launch the app
+        if: inputs.run_app != false
+        run: |
+          udid="${{ steps.sim.outputs.udid }}"
+          app=$(find build/dd/Build/Products -name 'LIOS.app' -maxdepth 3 | head -1)
+          [ -n "$app" ] || { echo 'build produced no LIOS.app'; exit 1; }
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" com.frederikberg.lios
+          # launch returns once the process exists, which is before it has drawn anything.
+          sleep 8
+
+      - name: Screenshot the running app
+        if: inputs.run_app != false
+        run: |
+          mkdir -p artifacts
+          xcrun simctl io "${{ steps.sim.outputs.udid }}" screenshot artifacts/screen.png
+          bytes=$(stat -f %z artifacts/screen.png)
+          echo "screenshot is $bytes bytes"
+          [ "$bytes" -gt 20000 ] || { echo 'suspiciously small — the screen may be blank'; exit 1; }
+
+      - name: Application logs
+        if: always() && inputs.run_app != false
+        run: |
+          mkdir -p artifacts
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 3m --style compact \
+            --predicate 'processImagePath CONTAINS "LIOS"' > artifacts/app.log 2>&1 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-mac-artifacts
+          path: ios/artifacts/
+          retention-days: 14
