@@ -116,19 +116,25 @@ def create_item(
     *,
     relay_url: str,
     device_token: str,
+    item_id: str,
     sealed_blob: bytes,
     target_device_id: str | None = None,
+    sealed_preview: bytes | None = None,
 ) -> ItemCreated:
-    """`POST /api/items` -- upload one sealed blob, raw."""
-    headers = endpoints.auth_header(device_token)
-    headers["Content-Type"] = "application/octet-stream"
-    headers["Content-Length"] = str(len(sealed_blob))
-    message = _message(
-        "POST",
-        endpoints.items_url(relay_url, target_device_id=target_device_id),
-        headers=headers,
-        body=sealed_blob,
+    """`POST /api/items` -- upload one sealed blob, raw.
+
+    `item_id` must be the same id sealed into `sealed_blob`'s AEAD associated data (see
+    `relaylink.item_codec`) -- the relay cannot assign one after the fact without making the
+    blob the caller just sealed unopenable.
+    """
+    headers = endpoints.create_item_headers(
+        device_token=device_token,
+        item_id=item_id,
+        content_length=len(sealed_blob),
+        sealed_preview=sealed_preview,
     )
+    url = endpoints.items_url(relay_url, target_device_id=target_device_id)
+    message = _message("POST", url, headers=headers, body=sealed_blob)
     return ItemCreated.model_validate_json(_send(session, message))
 
 

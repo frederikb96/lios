@@ -18,6 +18,27 @@ def test_items_url_with_target_narrows_delivery() -> None:
     assert url == "https://relay.example.com/api/items?target_device_id=abc-123"
 
 
+def test_create_item_headers_carries_bearer_and_item_id() -> None:
+    headers = endpoints.create_item_headers(
+        device_token="secret-token", item_id="item-1", content_length=42
+    )
+    assert headers["Authorization"] == "Bearer secret-token"
+    assert headers["Content-Type"] == "application/octet-stream"
+    assert headers["Content-Length"] == "42"
+    assert headers["X-Item-Id"] == "item-1"
+    assert "X-Sealed-Preview" not in headers
+
+
+def test_create_item_headers_with_sealed_preview() -> None:
+    headers = endpoints.create_item_headers(
+        device_token="secret-token",
+        item_id="item-1",
+        content_length=42,
+        sealed_preview=b"sealed-bytes",
+    )
+    assert headers["X-Sealed-Preview"] == "c2VhbGVkLWJ5dGVz"
+
+
 def test_trailing_slash_on_relay_url_is_stripped() -> None:
     assert endpoints.item_url("https://relay.example.com/", "xyz") == (
         "https://relay.example.com/api/items/xyz"
