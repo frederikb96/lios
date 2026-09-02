@@ -20,8 +20,9 @@ import base64
 import gi
 
 gi.require_version("Secret", "1")
+gi.require_version("GLib", "2.0")
 
-from gi.repository import Secret  # noqa: E402
+from gi.repository import GLib, Secret  # noqa: E402
 
 _SCHEMA = Secret.Schema.new(
     "io.github.frederikb96.Lios",
@@ -34,7 +35,24 @@ _GROUP_KEY_ATTRS = {"kind": "group_key"}
 
 
 class SecretNotFound(RuntimeError):
-    """Nothing is stored under the requested attributes -- this device has not paired yet."""
+    """Nothing is stored under the requested attributes, or the Secret Service itself is
+    unreachable (no keyring daemon running at all) -- either way, this device is not paired
+    with a usable credential right now."""
+
+
+def _lookup(attributes: dict[str, str]) -> str | None:
+    """`Secret.password_lookup_sync`, folding "service unreachable" into "not found".
+
+    `libsecret` raises `GLib.Error` rather than returning `None` when there is no Secret
+    Service on the bus at all (as opposed to the service being reachable but holding nothing
+    under these attributes) -- both are the same "no usable secret right now" to every caller
+    here.
+    """
+    try:
+        value = Secret.password_lookup_sync(_SCHEMA, attributes, None)
+        return str(value) if value is not None else None
+    except GLib.Error:
+        return None
 
 
 def store_device_token(token: str) -> None:
@@ -54,7 +72,7 @@ def load_device_token() -> str:
     Raises:
         SecretNotFound: this device has not completed pairing.
     """
-    value = Secret.password_lookup_sync(_SCHEMA, _DEVICE_TOKEN_ATTRS, None)
+    value = _lookup(_DEVICE_TOKEN_ATTRS)
     if value is None:
         raise SecretNotFound("no device token stored -- pair this device first")
     return str(value)
@@ -77,7 +95,7 @@ def load_group_key() -> bytes:
     Raises:
         SecretNotFound: this device has not completed pairing.
     """
-    value = Secret.password_lookup_sync(_SCHEMA, _GROUP_KEY_ATTRS, None)
+    value = _lookup(_GROUP_KEY_ATTRS)
     if value is None:
         raise SecretNotFound("no group key stored -- pair this device first")
     return base64.b64decode(value)

@@ -52,6 +52,33 @@ source-offer obligation.
 flatpak-builder --user --install --force-clean build packaging/io.github.frederikb96.Lios.yml
 ```
 
+A single-file, installable bundle (for handing to someone without `flatpak-builder`, or
+syncing to another machine) needs an intermediate local repo rather than `--install`:
+
+```
+flatpak-builder --repo=repo --force-clean build packaging/io.github.frederikb96.Lios.yml
+flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+    repo lios.flatpak io.github.frederikb96.Lios
+```
+
+`--runtime-repo` embeds a pointer to Flathub's `.flatpakrepo` in the bundle, so `flatpak
+install --user --bundle lios.flatpak` on a machine with no Flathub remote configured yet gets
+offered one automatically to pull `org.gnome.Platform`//50 from, rather than failing on a
+missing runtime with no next step.
+
+`share/dbus-1/services/io.github.frederikb96.Lios.service` (installed by `lios-linux`'s own
+build commands in the manifest) is required, not automatic, for the `.desktop` file's
+`DBusActivatable=true` -- `flatpak-builder`'s plain `--install` build does not validate this,
+but exporting to a repo (`--repo=`, which `build-bundle` needs) does, and fails the export
+without it (`Desktop file D-Bus activatable, but service file not exported`).
+
+## Gotchas
+
+`Adw.StatusPage` (and other `Adw` widgets marked final in libadwaita) cannot be subclassed
+from PyGObject -- doing so raises `RuntimeError: could not create new GType` at class
+definition time, not at first use. Compose one as a child widget instead (`ui/onboarding.py`
+holds a `.widget` rather than inheriting from `Adw.StatusPage`).
+
 ## Layout
 
 - `clipboard/` -- `wl-copy`/`wl-paste` and native `Gdk.Clipboard`, and the ordered mime-type
