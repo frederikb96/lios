@@ -16,12 +16,12 @@ final class NotificationRouter {
 
     private lazy var history = HistoryStore(directory: HistoryStore.defaultDirectory())
 
-    func handleTap(userInfo: [AnyHashable: Any]) async {
-        guard let decoded = PushPayload.decode(userInfo: userInfo) else {
-            LogBuffer.shared.log(
-                .warning, "tapped notification carried no recognisable LIOS payload", category: "receive")
-            return
-        }
+    /// Takes the already-decoded payload rather than a raw `userInfo` dictionary on purpose:
+    /// `[AnyHashable: Any]` is not `Sendable`, and this method lives on `@MainActor` while its
+    /// caller (a nonisolated `UNUserNotificationCenterDelegate` requirement) is not — decoding
+    /// must happen on the caller's side, so only `PushPayload.Decoded` (plain `UUID`s and `Data`,
+    /// genuinely `Sendable`) ever crosses that boundary.
+    func handleTap(decoded: PushPayload.Decoded) async {
         guard let session = LiosSession.loadFromKeychain() else {
             LogBuffer.shared.log(
                 .error, "notification tapped while unpaired — dropping item \(decoded.itemId)", category: "receive")
