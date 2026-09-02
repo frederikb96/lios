@@ -28,6 +28,7 @@ jobs:
     outputs:
       protocol: ${{ steps.filter.outputs.protocol }}
       relay: ${{ steps.filter.outputs.relay }}
+      linux: ${{ steps.filter.outputs.linux }}
       image: ${{ steps.filter.outputs.image }}
       chart: ${{ steps.filter.outputs.chart }}
     steps:
@@ -43,6 +44,10 @@ jobs:
             relay:
               - 'protocol/**'
               - 'relay/**'
+              - '.github/workflows/ci.yaml'
+            linux:
+              - 'protocol/**'
+              - 'linux/**'
               - '.github/workflows/ci.yaml'
             image:
               - 'docker/**'
@@ -168,6 +173,77 @@ jobs:
         working-directory: relay
         run: pytest tests/pg -v --tb=short
 
+  linux-lint:
+    name: linux - lint + type check
+    needs: detect
+    if: ${{ needs.detect.outputs.linux == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install GTK4/libadwaita/libsoup3/libsecret introspection bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-soup-3.0 gir1.2-secret-1 \
+            python3-gi python3-gi-cairo python3-venv
+
+      # --system-site-packages so the venv sees the apt-installed gi bindings, which have no
+      # PyPI equivalent. protocol's requires-python targets the Flatpak runtime's Python
+      # (3.13); the runner's system Python is older, hence --ignore-requires-python here --
+      # nothing in protocol is actually version-sensitive. PyGObject/pycairo are left off this
+      # venv's own install (--no-deps) since apt already provided them.
+      - name: Install into a venv with access to the apt-installed gi bindings
+        run: |
+          python3 -m venv --system-site-packages linux/.venv
+          source linux/.venv/bin/activate
+          pip install -e ./protocol --ignore-requires-python
+          pip install -e "./linux[dev]" --no-deps
+          pip install pytest ruff mypy qrcode
+
+      - name: Lint
+        run: |
+          source linux/.venv/bin/activate
+          cd linux && ruff check .
+
+      - name: Type check
+        run: |
+          source linux/.venv/bin/activate
+          cd linux && mypy src/
+
+  linux-test:
+    name: linux - unit tests
+    needs: detect
+    if: ${{ needs.detect.outputs.linux == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install GTK4/libadwaita/libsoup3/libsecret introspection bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-soup-3.0 gir1.2-secret-1 \
+            python3-gi python3-gi-cairo python3-venv
+
+      # --system-site-packages so the venv sees the apt-installed gi bindings, which have no
+      # PyPI equivalent. protocol's requires-python targets the Flatpak runtime's Python
+      # (3.13); the runner's system Python is older, hence --ignore-requires-python here --
+      # nothing in protocol is actually version-sensitive. PyGObject/pycairo are left off this
+      # venv's own install (--no-deps) since apt already provided them.
+      - name: Install into a venv with access to the apt-installed gi bindings
+        run: |
+          python3 -m venv --system-site-packages linux/.venv
+          source linux/.venv/bin/activate
+          pip install -e ./protocol --ignore-requires-python
+          pip install -e "./linux[dev]" --no-deps
+          pip install pytest ruff mypy qrcode
+
+      - name: Test
+        run: |
+          source linux/.venv/bin/activate
+          cd linux && pytest -v --tb=short
+
   image:
     name: Container image build
     needs: detect
@@ -214,7 +290,19 @@ jobs:
 
   ci-ok:
     name: CI ok
-    needs: [detect, protocol-lint, protocol-test, relay-lint, relay-unit, relay-pg, image, chart]
+    needs:
+      [
+        detect,
+        protocol-lint,
+        protocol-test,
+        relay-lint,
+        relay-unit,
+        relay-pg,
+        linux-lint,
+        linux-test,
+        image,
+        chart,
+      ]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -226,6 +314,8 @@ jobs:
             "${{ needs.relay-lint.result }}" \
             "${{ needs.relay-unit.result }}" \
             "${{ needs.relay-pg.result }}" \
+            "${{ needs.linux-lint.result }}" \
+            "${{ needs.linux-test.result }}" \
             "${{ needs.image.result }}" \
             "${{ needs.chart.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
