@@ -1,0 +1,58 @@
+name: lios-dev
+
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+    container_name: lios-relay-dev
+    ports:
+      - "18090:8080"
+    volumes:
+      - ./protocol:/app/protocol:Z
+      - ./relay/src:/app/relay/src:Z
+      - ./relay/config:/app/relay/config:ro,Z
+      - ./relay/config-custom:/app/relay/config-custom:ro,Z
+      - ./relay/alembic:/app/relay/alembic:ro,Z
+      - ./relay/alembic.ini:/app/relay/alembic.ini:ro,Z
+    environment:
+      LIOS_DATABASE_URL: "postgresql+asyncpg://devuser:${POSTGRES_PASSWORD}@postgres:5432/lios_dev"
+      LIOS_APNS_KEY_ID: "${LIOS_APNS_KEY_ID:-}"
+      LIOS_APNS_TEAM_ID: "${LIOS_APNS_TEAM_ID:-}"
+      LIOS_APNS_AUTH_KEY_B64: "${LIOS_APNS_AUTH_KEY_B64:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # --reload pre-binds the listening socket once in the reloader process and hands it to
+    # each worker generation, so it stays open and accepting connections across a restart --
+    # if the worker reload just spawned dies at startup, a TCP connect against 8080 still
+    # succeeds (nothing readable serves it, curl's own request never gets a response) and
+    # stays open until the next file change respawns a worker. Without --max-time, curl -sf
+    # would hang on exactly that dangling connection rather than reporting failure.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--max-time", "3", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+    restart: "no"
+
+  postgres:
+    image: docker.io/postgres:17-alpine
+    container_name: lios-postgres-dev
+    ports:
+      - "15443:5432"
+    environment:
+      POSTGRES_DB: lios_dev
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d lios_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - /tmp/lios-dev-pgdata:/var/lib/postgresql:Z
+    restart: "no"
