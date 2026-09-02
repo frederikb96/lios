@@ -38,6 +38,16 @@ CASE_SAME_LINE_BODY = re.compile(r"^\s*(?:case\b[^:]*|default)\s*:\s*(\S.*)$")
 #: the negative lookahead is what keeps it out of this match.
 NONISOLATED_FUNC = re.compile(r"\bnonisolated(?!\()\b.*\bfunc\b")
 
+#: Names of SDK delegate/callback requirements that are nonisolated by contract — the framework
+#: calls them from whatever queue or thread it chooses, never guaranteeing the main actor, no
+#: matter what actor the conforming type itself lives on. Each has actually failed a Mac run
+#: here: `didReceive` (both `UNUserNotificationCenterDelegate` and the notification service
+#: extension's own requirement), `metadataOutput` (`AVCaptureMetadataOutputObjectsDelegate`),
+#: `application` (`UIApplicationDelegate`), `userNotificationCenter`, `urlSession`.
+DELEGATE_CALLBACK_FUNC = re.compile(
+    r"^\s*func (?:didReceive|metadataOutput|application|userNotificationCenter|urlSession)\b"
+)
+
 #: Main-thread-only UIKit surface, as textual fragments rather than full type signatures — narrow
 #: on purpose, matching `IMPLICITLY_ISOLATED_BASE`'s own shape, so a hit is a real access rather
 #: than a coincidental substring.
@@ -189,6 +199,49 @@ def nonisolated_uikit_access(lines: list[str]) -> list[tuple[int, str, str]]:
     return findings
 
 
+def async_delegate_callback_missing_nonisolated(lines: list[str]) -> list[tuple[int, str, str]]:
+    """An `async` SDK delegate/callback requirement declared without `nonisolated`, inside a
+    type the compiler infers as `@MainActor` (a `UIViewController`/`NSObject` subclass, or any
+    type conforming to a `*Delegate` protocol -- which covers every real case this has hit).
+
+    Swift 6 then treats the whole method as MainActor-isolated, and any parameter the SDK hands
+    it (`[AnyHashable: Any]`, `[AVMetadataObject]`, ...) becomes "sent" across an isolation
+    boundary the moment the SDK's own dispatch queue is not main -- the exact error each of
+    `PushRegistrar.userNotificationCenter(_:didReceive:)`,
+    `ScannerViewController.metadataOutput(_:didOutput:from:)` and the app-delegate remote-push
+    callbacks hit, one macOS run apart, before this rule existed. The fix is always the same:
+    mark the method `nonisolated`, extract the concrete `Sendable` value it needs, and hop to
+    the main actor carrying only that value -- never the raw SDK parameter.
+
+    Joins forward to the declaration's opening `{` (parameter lists here routinely span several
+    lines) to find `async`, and checks the declaration line itself for `nonisolated` -- the one
+    place Swift accepts that modifier. A hit two calls into a value type's own async callback
+    that never touches actor state is a false positive this cannot rule out from text alone; the
+    name list above is what keeps that rare in practice.
+    """
+    findings: list[tuple[int, str, str]] = []
+    for index, line in enumerate(lines):
+        if not DELEGATE_CALLBACK_FUNC.search(line):
+            continue
+        if "nonisolated" in line:
+            continue
+        opening = index
+        while opening < len(lines) and opening - index <= 10 and "{" not in lines[opening]:
+            opening += 1
+        if opening >= len(lines) or "{" not in lines[opening]:
+            continue
+        signature = " ".join(lines[index : opening + 1])
+        if "async" not in signature:
+            continue
+        findings.append((
+            index + 1, line.strip(),
+            "async SDK delegate callback with no 'nonisolated' -- the SDK does not guarantee "
+            "the main actor here; mark it 'nonisolated' and extract a Sendable value before "
+            "touching any actor-isolated state",
+        ))
+    return findings
+
+
 def switch_after_guard_missing_return(lines: list[str]) -> list[tuple[int, str, str]]:
     """A `switch` right after a one-line `guard ... else { return ... }`, with a case whose
     same-line body has no `return`.
@@ -297,6 +350,7 @@ def check(path: Path) -> list[tuple[int, str, str]]:
     isolated = main_actor_line_numbers(lines)
     findings: list[tuple[int, str, str]] = detached_reads_of_isolated_statics(lines, isolated)
     findings.extend(nonisolated_uikit_access(lines))
+    findings.extend(async_delegate_callback_missing_nonisolated(lines))
     findings.extend(switch_after_guard_missing_return(lines))
     findings.extend(unmarked_observer_token_read_in_deinit(lines, isolated))
 
