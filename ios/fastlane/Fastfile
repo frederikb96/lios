@@ -1,0 +1,140 @@
+require "base64"
+require "tmpdir"
+
+default_platform(:ios)
+
+# One set of lanes for both the rented Mac and CI. Keeping them shared is deliberate: a local
+# lane that drifts from the CI lane turns "works on my machine" into a class of release failure,
+# and with a build box that is destroyed after every burst that drift would go unnoticed.
+
+SCHEME = "LIOS"
+OUTPUT_DIR = "build"
+
+# Bundle id -> provisioning profile name, for the three targets this project archives together.
+# All three profiles are signed against the SAME distribution certificate (Apple caps
+# certificates per account, not per bundle id, and one already exists — see the ios skill's
+# signing reference) — only the profile differs per target.
+PROFILE_NAMES = {
+  "com.frederikberg.lios" => "LIOS App Store",
+  "com.frederikberg.lios.share" => "LIOS Share App Store",
+  "com.frederikberg.lios.notify" => "LIOS Notify App Store",
+}
+
+# Marketing version is injected by CI from the git tag. A local build with none set is "dev",
+# which is deliberately not a valid version so it can never be mistaken for a release.
+def ipa_name
+  "lios-#{ENV.fetch('MARKETING_VERSION', 'dev')}.ipa"
+end
+
+# Empty unless CI set them, so a local build falls through to Config/Version.xcconfig.
+def version_xcargs
+  args = []
+  args << "MARKETING_VERSION=#{ENV['MARKETING_VERSION']}" unless ENV['MARKETING_VERSION'].to_s.empty?
+  unless ENV['CURRENT_PROJECT_VERSION'].to_s.empty?
+    args << "CURRENT_PROJECT_VERSION=#{ENV['CURRENT_PROJECT_VERSION']}"
+  end
+  args.join(" ")
+end
+
+# 🚨 Signing uses an identity minted once and stored as secrets, NOT created per build — see the
+# ios skill's signing reference for why a fresh CI runner minting its own certificate exhausts
+# Apple's per-account cap within a few runs. CI imports the identity and never calls Apple's
+# certificate endpoints.
+def asc_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_content: ENV.fetch("ASC_KEY_P8_BASE64"),
+    is_key_content_base64: true,
+    in_house: false
+  )
+end
+
+# Decoded here rather than in the workflow so `fastlane build` behaves identically on a rented
+# Mac and in CI — the lanes are shared precisely so local and CI cannot drift.
+def decode_secret(var, filename)
+  path = File.join(Dir.tmpdir, filename)
+  File.binwrite(path, Base64.decode64(ENV.fetch(var)))
+  path
+end
+
+platform :ios do
+  desc "Run the test suite"
+  lane :test do
+    # The tests live in the LIOSKit package, not in an Xcode test target, so this runs SwiftPM
+    # rather than `run_tests`. Pointing `run_tests` at the LIOS scheme would be worse than wrong:
+    # that scheme has no testables, so it would report success having run nothing.
+    sh("swift test --package-path ../LIOSKit")
+  end
+
+  desc "Archive and sign a release build — app plus both extensions, one distribution certificate"
+  lane :build do
+    # On CI this creates a throwaway keychain and unlocks it; locally it is a no-op, so the
+    # lane stays runnable on a rented Mac without polluting the login keychain.
+    setup_ci
+
+    import_certificate(
+      certificate_path: decode_secret("IOS_BUILD_CERTIFICATE_BASE64", "distribution.p12"),
+      certificate_password: ENV.fetch("IOS_P12_PASSWORD"),
+      keychain_name: ENV.fetch("MATCH_KEYCHAIN_NAME", "fastlane_tmp_keychain"),
+      keychain_password: ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "")
+    )
+
+    install_provisioning_profile(
+      path: decode_secret("IOS_PROVISIONING_PROFILE_BASE64", "profile-lios.mobileprovision")
+    )
+    install_provisioning_profile(
+      path: decode_secret("IOS_PROVISIONING_PROFILE_SHARE_BASE64", "profile-lios-share.mobileprovision")
+    )
+    install_provisioning_profile(
+      path: decode_secret("IOS_PROVISIONING_PROFILE_NOTIFY_BASE64", "profile-lios-notify.mobileprovision")
+    )
+
+    build_app(
+      scheme: SCHEME,
+      output_directory: OUTPUT_DIR,
+      output_name: ipa_name,
+      export_method: "app-store",
+      # Manual signing, because the identity is supplied rather than discovered. Automatic
+      # signing here would ask Apple for a certificate and reintroduce exactly the cap problem
+      # the stored identity exists to avoid.
+      export_options: {
+        signingStyle: "manual",
+        teamID: ENV.fetch("IOS_TEAM_ID"),
+        provisioningProfiles: PROFILE_NAMES
+      },
+      # The git tag is the single source of truth for the marketing version; the build number is
+      # the CI run number. Overriding on the command line keeps the checked-in project file
+      # untouched, which `agvtool` would not.
+      #
+      # Passed ONLY when CI actually set them. Passing them unconditionally with defaults would
+      # override Config/Version.xcconfig on every local build too, making that file dead while
+      # appearing to be the source of the values — a second default silently shadowing the first.
+      xcargs: version_xcargs
+    )
+  end
+
+  desc "Upload the built ipa to TestFlight"
+  lane :upload do
+    upload_to_testflight(
+      api_key: asc_key,
+      app_identifier: "com.frederikberg.lios",
+      # build and upload are separate fastlane processes in CI, so SharedValues is empty here
+      # and the default would glob the repo root for an ipa that lives in build/.
+      ipa: File.join(OUTPUT_DIR, ipa_name),
+      # Without this the job idles 10-30 minutes on a metered macOS runner while Apple processes
+      # the build. It is the single biggest cost trap in an iOS release pipeline, and it has no
+      # Android equivalent.
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: ENV.fetch("TESTFLIGHT_CHANGELOG", "Automated build from CI.")
+    )
+  end
+
+  desc "Test, build and upload — the whole release, for local use"
+  lane :beta do
+    test
+    build
+    upload
+  end
+end

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- What lets a silent (content-available) push wake the app at all, and what a tapped
+	     banner's foreground launch relies on to have been declared in advance. Array-valued, so
+	     it lives in a real Info.plist rather than an INFOPLIST_KEY_ build setting — that
+	     mechanism is what Xcode's own Background Modes capability writes, and whether the
+	     build-setting form reaches an array-valued key is exactly the kind of thing that fails
+	     silently and reads as a platform restriction rather than a missing declaration. The Mac
+	     workflow should assert this key survives into the built bundle alongside a generated
+	     one, the same way pai-ios's does. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+</dict>
+</plist>
