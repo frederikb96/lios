@@ -1,4 +1,5 @@
-# and the Linux client, and gated on ios/** so a relay-only push does not spend a run here.
+# Everything about the iOS half that can be checked without Apple hardware.
+# Gated on ios/** so a relay-only push does not spend a run here.
 name: iOS free checks
 
 on:

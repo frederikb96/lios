@@ -5,7 +5,7 @@
 	<key>aps-environment</key>
 	<string>production</string>
 	<!-- No App Group exists for com.frederikberg.lios — Apple's appGroups endpoint does not exist
-	     in the App Store Connect API at all (spec row order 2.95), and creating one is a manual
+	     in the App Store Connect API at all, and creating one is a manual
 	     portal step nobody has done. A Keychain access group needs only a shared team, which
 	     all three targets already have, and is what lets the app, the share extension and the
 	     notification service extension all read the same group key and device credential. -->

@@ -1,4 +1,5 @@
-# fixture sweep — extend it once a bridge exists.
+# The only place the app target, the extensions and the SwiftUI views actually compile.
+# Gated to pull requests and manual dispatch: a macOS run takes minutes and queues.
 name: iOS Mac
 
 on:

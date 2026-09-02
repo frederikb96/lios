@@ -6,7 +6,7 @@
     /// all three targets — the app, the share extension and the notification service extension.
     ///
     /// This is the substitute for an App Group: none exists for `com.frederikberg.lios` (Apple's
-    /// `POST /v1/appGroups` does not exist as an endpoint at all — see the spec's row order 2.95),
+    /// `POST /v1/appGroups` does not exist as an endpoint at all),
     /// but a Keychain access group needs only a shared team, which every target here already has.
     /// The three targets' entitlements must each list the same
     /// `$(AppIdentifierPrefix)com.frederikberg.lios` group, or every read here returns `nil` with

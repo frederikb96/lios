@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Row order 2.0's requirement verbatim: text, a URL, images and arbitrary files, all from
+	<!-- What the extension accepts: text, a URL, images and arbitrary files, all from
 	     any app's share sheet — Signal named explicitly. Four independent conditions rather than
 	     one combined predicate, which is what lets a Signal text share and a Photos image share
 	     both activate this extension without either narrowing the other. -->

@@ -1,8 +1,8 @@
 import LIOSKit
 import UIKit
 
-/// What happens the moment Freddy taps a LIOS banner — the interaction he actually asked for,
-/// and the only place in this app that is allowed to touch `UIPasteboard.general`.
+/// What happens the moment a LIOS banner is tapped, and the only place in this app that is
+/// allowed to touch `UIPasteboard.general`.
 ///
 /// 🚨 Never call anything here except in direct response to a notification tap or an explicit
 /// pull. KDE Connect's iOS client re-syncs on every foreground-resume and overwrites whatever the

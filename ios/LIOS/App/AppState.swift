@@ -18,8 +18,8 @@ final class AppState {
         case paired(relayURL: URL, deviceId: UUID)
     }
 
-    /// What the receive path does once an item is decrypted, for `RootView` to act on. Row order
-    /// 8's two branches: text confirms and writes straight to the pasteboard; image or file
+    /// What the receive path does once an item is decrypted, for `RootView` to act on. Two
+    /// branches: text confirms and writes straight to the pasteboard; an image or file
     /// opens the share sheet on it. Never set except in direct response to a notification tap or
     /// an explicit pull — see `NotificationRouter`'s own warning about why.
     enum ReceiveOutcome: Equatable {

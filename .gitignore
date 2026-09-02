@@ -31,3 +31,11 @@ config-custom/*.yaml
 .DS_Store
 Thumbs.db
 tmp/
+
+# Swift / Xcode
+.build/
+DerivedData/
+*.xcuserdatad/
+xcuserdata/
+*.ipa
+*.dSYM.zip
