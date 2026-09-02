@@ -7,6 +7,14 @@ import UniformTypeIdentifiers
 /// Nautilus-style file share and an image share both offer `public.file-url`, so file is checked
 /// last among the "this could be a document" cases and image first, matching what a person means
 /// by "share this photo" versus "share this PDF".
+///
+/// `NSItemProvider` is not `Sendable`, so this stays on the same actor as its caller
+/// (`ShareUploadModel`, `@MainActor`) rather than hopping off to load — the provider is never
+/// sent anywhere, only read from in place. The completion-handler calls inside each `load*`
+/// function still run on whatever queue `NSItemProvider` itself chooses; only the `async`
+/// function wrapping them is pinned here, and resuming a `CheckedContinuation` from another
+/// thread is the one part of this pattern Swift Concurrency explicitly allows.
+@MainActor
 enum AttachmentLoader {
 
     struct Loaded {
