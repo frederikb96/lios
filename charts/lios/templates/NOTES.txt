@@ -1,0 +1,35 @@
+LIOS relay has been deployed as {{ include "lios.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+{{- if not .Values.existingSecret }}
+{{- if not .Values.secret.create }}
+
+WARNING: secret.create is false and existingSecret is unset. The pod will fail to start
+until you either set secret.create=true with a databaseUrl, or point existingSecret at a
+Secret containing the keys named in existingSecretKeys.
+{{- end }}
+{{- end }}
+
+Check status:
+
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "lios.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/health/live
+  curl http://localhost:8080/health
+
+{{- if .Values.ingress.enabled }}
+
+The relay is exposed at:
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+
+Reachable through this Ingress means reachable to anyone who can resolve the host -- the
+relay carries its own bearer device-token auth, so no ForwardAuth or oauth2-proxy belongs in
+front of it (that would also break the WebSocket upgrade on /api/stream).
+{{- else }}
+
+No Ingress is enabled (ingress.enabled=false). The Service is only reachable from inside the
+cluster; use port-forward above, or set ingress.enabled=true with a host once you have an
+ingress controller.
+{{- end }}
+
+Pair your first device against `POST /api/devices/bootstrap` -- see the root README for the
+full API and the pairing flow every device after the first goes through instead.

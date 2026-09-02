@@ -1,0 +1,20 @@
+apiVersion: v2
+name: lios
+description: LIOS relay -- stores ciphertext, tracks acks, rings doorbells. Cannot read a byte it forwards.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/frederikb96/lios
+sources:
+  - https://github.com/frederikb96/lios
+keywords:
+  - clipboard
+  - sharing
+  - websocket
+  - postgresql
+maintainers:
+  - name: Frederik Berg
+    url: https://github.com/frederikb96
+annotations:
+  artifacthub.io/license: MIT

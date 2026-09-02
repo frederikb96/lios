@@ -1,0 +1,210 @@
+# Default values for lios (the relay).
+# This is a YAML-formatted file. Declare variables to be substituted into templates.
+
+# -- Number of pod replicas. The WebSocket hub (`/api/stream`) fans out from one
+# in-process broadcaster with no shared backing store, so a second replica would only ever
+# announce to whichever half of the connected devices happened to land on it. Leave this at
+# 1. `strategy: Recreate` (fixed below, not configurable) exists for the same reason: a
+# rolling update briefly runs old and new pods together, which this workload cannot tolerate.
+# values.schema.json pins this to the literal value 1, so `--set replicaCount=N` for any
+# other N fails validation.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/frederikb96/lios-relay
+  pullPolicy: IfNotPresent
+  # -- Image tag. Defaults to the chart's appVersion when empty.
+  tag: ""
+
+# -- Pull secrets for the GHCR image, if the repository/tag is private.
+imagePullSecrets: []
+# - name: ghcr-pull-secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a ServiceAccount for the pod.
+  create: true
+  # -- Automount the ServiceAccount token. The relay never talks to the Kubernetes API, so
+  # this can safely stay false if you set your own name.
+  automount: false
+  annotations: {}
+  # -- Name of the ServiceAccount to use. Generated from the fullname template if not set.
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  # -- Port the Service exposes and the port the app listens on (`config.server.port` in the
+  # image defaults). Change both together if you override `config.server.port`.
+  port: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+    # No default CPU limit -- avoids throttling the event loop under a burst of
+    # simultaneously connecting clients.
+    # cpu: 500m
+
+livenessProbe:
+  # -- Process-liveness only: never touches the database, so it never restarts a healthy pod
+  # over a transient database outage.
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  # -- Checks the database is reachable. A fresh install with an empty device registry is
+  # Ready as soon as the database check passes, so `helm install --wait` and a rollout both
+  # complete normally.
+  enabled: true
+  path: /health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Extra volumes to add to the pod (e.g. for extraVolumeMounts below).
+extraVolumes: []
+
+# -- Extra volume mounts on the relay container.
+extraVolumeMounts: []
+
+# -- Extra environment variables on the relay container, Kubernetes `env` syntax. Use this
+# for LIOS_SECTION_KEY overrides you'd rather not put in `config:` below, or anything else
+# the app's env var override mechanism supports.
+extraEnv: []
+# - name: LIOS_SERVER_LOG_LEVEL
+#   value: debug
+
+# -- Extra `envFrom` entries on the relay container.
+extraEnvFrom: []
+
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  maxUnavailable: 1
+
+# -- Restricts egress traffic from the pod. Only useful with a CNI that enforces
+# NetworkPolicy (e.g. Cilium, Calico). The relay only ever makes outbound connections to
+# PostgreSQL and to Apple's APNs (if push is configured), and serves inbound HTTP/WebSocket
+# on `service.port` only, so this is a reasonable workload to lock down.
+networkPolicy:
+  # -- When enabled with no egress rules configured below, the pod loses ALL outbound
+  # connectivity except DNS (empty `egress: []` under `policyTypes: [Egress]` means deny-all,
+  # not allow-all) -- it will not be able to reach PostgreSQL or APNs. Always set
+  # `networkPolicy.egress` to your PostgreSQL destination and to the public internet (for
+  # APNs) in the same values file where you flip this on.
+  enabled: false
+  # -- Allow DNS resolution (kube-dns/CoreDNS) -- almost always required alongside custom
+  # egress rules below.
+  allowDNS: true
+  # -- Egress rules, `NetworkPolicySpec.egress` syntax. Narrow this to your PostgreSQL
+  # destination and to APNs (api.push.apple.com, 443).
+  egress: []
+  # - to:
+  #     - podSelector:
+  #         matchLabels:
+  #           cnpg.io/cluster: lios-postgres
+  #   ports:
+  #     - protocol: TCP
+  #       port: 5432
+  # - to:
+  #     - ipBlock:
+  #         cidr: 0.0.0.0/0
+  #   ports:
+  #     - protocol: TCP
+  #       port: 443
+
+# -- Application configuration, deep-merged as a sparse override on top of the
+# config/config.yaml defaults baked into the image (rendered to a ConfigMap, mounted at
+# configOverridePath). Keys here mirror config/config.yaml exactly -- see that file in the
+# repository for the full set of available keys, defaults and comments. Only set what you
+# want to change; everything else falls back to the image's built-in defaults.
+#
+# This section has no required key: the image's bundled config.yaml already resolves
+# `database.url` and every `apns.*` field from the Secret below via `${VAR}` placeholders --
+# not duplicated here. Set values here only to change something else, e.g.
+# `retention.max_items` or `server.log_level`.
+config: {}
+# retention:
+#   max_items: 100
+#   max_age_days: 14
+# server:
+#   log_level: WARNING
+
+# -- Path the config override ConfigMap is mounted at inside the container.
+configOverridePath: /app/relay/config-custom/config.override.yaml
+
+secret:
+  # -- Create a Secret from the values below. Set to false and use `existingSecret` instead
+  # for production / GitOps-managed secrets, so credentials never live in a values file or
+  # Helm release history.
+  create: false
+  # -- Full SQLAlchemy async database URL, credentials included, e.g.
+  # "postgresql+asyncpg://lios:<password>@<host>:5432/lios". Required -- there is no usable
+  # default for an external database.
+  databaseUrl: ""
+  # -- APNs push, all optional. The relay starts and serves every endpoint fine with these
+  # left empty; it simply sends no push to iOS devices in that case.
+  apnsKeyId: ""
+  apnsTeamId: ""
+  # -- The .p8 private key's PEM contents, base64-encoded (a PEM has embedded newlines,
+  # awkward to carry through a values file or Kubernetes Secret literal otherwise).
+  apnsAuthKeyB64: ""
+
+# -- Name of a pre-existing Secret to use instead of `secret.create`. Must contain the keys
+# named in `existingSecretKeys` below.
+existingSecret: ""
+
+existingSecretKeys:
+  databaseUrl: LIOS_DATABASE_URL
+  apnsKeyId: LIOS_APNS_KEY_ID
+  apnsTeamId: LIOS_APNS_TEAM_ID
+  apnsAuthKeyB64: LIOS_APNS_AUTH_KEY_B64
+
+ingress:
+  # -- The relay carries its own bearer-token auth (see the root README) -- no
+  # oauth2-proxy/ForwardAuth in front of it, which would also break the WebSocket upgrade on
+  # `/api/stream`. Enable this once you have an ingress controller and a host.
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  path: /
+  pathType: Prefix
+  tls:
+    # -- Enable to request a Secret named `tlsSecretName` (or the ingress-controller default
+    # naming) covering `host`.
+    enabled: false
+    secretName: ""
