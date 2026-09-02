@@ -1,0 +1,35 @@
+# Relay API
+
+Base URL is whatever the relay is deployed at (`http://localhost:8080` in dev, `LIOS_APNS_*`-independent of that). Every endpoint below except `GET /health`, `GET /health/live` and `POST /api/devices/pair` requires `Authorization: Bearer <device_token>`. Every JSON shape referenced here is a `lios_protocol.wire` Pydantic model -- the relay and every client import the same definitions, so this document names them rather than re-describing their fields.
+
+## Items
+
+- **`POST /api/items`** -- store a sealed item. Body is the raw sealed blob (`Content-Type: application/octet-stream`), *not* JSON -- a base64-encoded body would cost 33% more for an image. `Content-Length` is required; a body over `items.max_size_bytes` (see `relay/config/config.yaml`) is rejected with `413` before it is fully read. Optional query param `target_device_id` narrows delivery to one device; omitted, the item broadcasts to every other currently-paired device. Returns `ItemCreated` (`201`).
+- **`GET /api/items/{id}`** -- fetch one item's sealed blob, raw (`application/octet-stream`). `404` if it does not exist (never existed, or already pruned).
+- **`GET /api/items?since=<ISO 8601 timestamp>`** -- catch-up list of `ItemSummary` (clear metadata only -- id, sender, target, size, created_at; never the blob) created strictly after `since`. This is how a client that was offline finds out what it missed.
+- **`DELETE /api/items/{id}`** -- a device acknowledging it has taken an item. Idempotent, and a no-op (still `204`) for an item that no longer exists. An item is deleted early, before its retention window expires, once every device in its recipient snapshot has acked it.
+
+## Stream
+
+- **`GET /api/stream`** -- WebSocket. `Authorization` is sent as a normal header on the handshake (every client here is a native app, not a browser page restricted to the `WebSocket` constructor's header set). On a new item, the relay sends `StreamEvent` (`{"type": "item.new", "item": ItemSummary}`) to every other connected device. A text `{"type":"ping"}` arrives roughly every 30 seconds on an otherwise-idle connection.
+
+  **This is a doorbell, not a replay channel.** It only ever announces items created *after* the socket connected. A client must, on every connect, record the current time and immediately follow up with `GET /api/items?since=<that time>` to catch up on the gap since its last disconnect (or, on a first-ever connect, everything retention still holds). On any disconnect -- network change, relay restart, anything -- reconnect with exponential backoff (1s, 2s, 4s, ... capped at 60s, with jitter) and repeat the catch-up step. Treat a server-initiated close identically to a network error.
+
+## Devices
+
+- **`POST /api/devices/bootstrap`** -- register the very first device in an empty fleet. No token required, but refused (`403`) once any device already exists. Body: `DeviceBootstrap` (`platform`, `display_name`). Returns `DevicePaired` (`device_id`, `device_token`) -- the token is shown exactly once.
+- **`POST /api/devices/pairing-sessions`** -- an already-paired device mints a fresh single-use pairing code (default TTL 10 minutes, `pairing.code_ttl_seconds`). Returns `PairingSessionCreated` (`pairing_code`, `expires_at`). The caller builds the QR payload itself, entirely client-side, via `lios_protocol.pairing.build_pairing_payload` + `encode_qr_uri` -- **the group key is never sent to the relay**, only the code.
+- **`POST /api/devices/pair`** -- redeem a pairing code for a device token. No auth required (this *is* the credential bootstrap for every device after the first). Body: `PairingRedeem` (`pairing_code`, `platform`, `display_name`). A code that never existed, already expired, or was already redeemed all answer the same `401` -- the caller cannot distinguish which. Returns `DevicePaired`.
+- **`POST /api/devices/{id}/push-token`** -- register an APNs token for the caller's own device (`{id}` must match the authenticated device, or `403`). Body: `PushTokenUpdate` (`apns_token`). `204` on success.
+
+## Health
+
+- **`GET /health/live`** -- liveness: process is up, never touches the database. Use this for a Kubernetes liveness probe -- a database outage must not restart the pod.
+- **`GET /health`** -- readiness: database reachable. `200`/`{"status":"ok"}` or `503`/`{"status":"not_ready"}`.
+
+## Pairing, end to end
+
+1. First device ever: `POST /api/devices/bootstrap` gets its token directly; it also generates the group key locally (`lios_protocol.crypto.generate_group_key`) and stores it in its own keychain/secret store. No QR involved yet -- there is nothing to scan against.
+2. That device (or any later paired one) calls `POST /api/devices/pairing-sessions` with its own token, gets back a code, and builds a QR carrying `{relay_url, pairing_code, group_key}` via `lios_protocol.pairing`.
+3. The new device scans the QR, decodes the payload locally, and calls `POST /api/devices/pair` with the code (never the key -- the key came from the QR, not from the relay). It stores the group key and its own new token.
+4. Every item from here on is sealed with the one shared group key (`lios_protocol.crypto.seal`/`open_sealed`, `lios_protocol.framing.pack`/`unpack` for the metadata+payload framing inside the sealed blob) -- the relay never has it and never sees plaintext.

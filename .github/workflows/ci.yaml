@@ -1,0 +1,235 @@
+# This workflow runs on GitHub-hosted runners, never on a self-hosted one.
+#
+# It triggers on `pull_request`, and for that trigger GitHub runs the workflow file as it
+# exists on the pull request's own head. On a public repository that means a stranger can
+# rewrite this file in their fork and execute whatever they like on whatever machine it
+# names -- so naming a self-hosted runner here would hand them a shell inside whatever
+# infrastructure that runner lives in. Standard GitHub-hosted runners are unmetered on
+# public repositories, so there is no cost argument for doing otherwise.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      protocol: ${{ steps.filter.outputs.protocol }}
+      relay: ${{ steps.filter.outputs.relay }}
+      image: ${{ steps.filter.outputs.image }}
+      chart: ${{ steps.filter.outputs.chart }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            protocol:
+              - 'protocol/**'
+              - '.github/workflows/ci.yaml'
+            relay:
+              - 'protocol/**'
+              - 'relay/**'
+              - '.github/workflows/ci.yaml'
+            image:
+              - 'docker/**'
+              - 'protocol/**'
+              - 'relay/**'
+              - '.github/workflows/ci.yaml'
+            chart:
+              - 'charts/**'
+              - '.github/workflows/ci.yaml'
+
+  protocol-lint:
+    name: protocol - lint + type check
+    needs: detect
+    if: ${{ needs.detect.outputs.protocol == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        working-directory: protocol
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        working-directory: protocol
+        run: ruff check .
+
+      - name: Type check
+        working-directory: protocol
+        run: mypy src/
+
+  protocol-test:
+    name: protocol - unit tests
+    needs: detect
+    if: ${{ needs.detect.outputs.protocol == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        working-directory: protocol
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Test
+        working-directory: protocol
+        run: pytest -v --tb=short
+
+  relay-lint:
+    name: relay - lint + type check
+    needs: detect
+    if: ${{ needs.detect.outputs.relay == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv pip install --system -e "./protocol" -e "./relay[dev]"
+
+      - name: Lint
+        working-directory: relay
+        run: ruff check .
+
+      - name: Type check
+        working-directory: relay
+        run: mypy src/
+
+  relay-unit:
+    name: relay - unit tests
+    needs: detect
+    if: ${{ needs.detect.outputs.relay == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv pip install --system -e "./protocol" -e "./relay[dev]"
+
+      - name: Unit tests
+        working-directory: relay
+        run: pytest tests/unit -v --tb=short
+
+  relay-pg:
+    name: relay - Postgres integration tests
+    needs: detect
+    if: ${{ needs.detect.outputs.relay == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv pip install --system -e "./protocol" -e "./relay[dev]"
+
+      - name: pg-layer tests
+        working-directory: relay
+        run: pytest tests/pg -v --tb=short
+
+  image:
+    name: Container image build
+    needs: detect
+    if: ${{ needs.detect.outputs.image == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built but never pushed: this proves the release will not discover a broken
+      # Dockerfile after the tag has already been created.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  chart:
+    name: Helm chart
+    needs: detect
+    if: ${{ needs.detect.outputs.chart == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint charts/lios
+
+      - name: Render default values
+        run: helm template lios charts/lios > /dev/null
+
+      - name: Reject an unsupported replica count
+        run: |
+          if helm template lios charts/lios --set replicaCount=3 > /dev/null 2>&1; then
+            echo "values.schema.json accepted replicaCount=3; the guard is not working"
+            exit 1
+          fi
+
+  ci-ok:
+    name: CI ok
+    needs: [detect, protocol-lint, protocol-test, relay-lint, relay-unit, relay-pg, image, chart]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          for result in \
+            "${{ needs.protocol-lint.result }}" \
+            "${{ needs.protocol-test.result }}" \
+            "${{ needs.relay-lint.result }}" \
+            "${{ needs.relay-unit.result }}" \
+            "${{ needs.relay-pg.result }}" \
+            "${{ needs.image.result }}" \
+            "${{ needs.chart.result }}"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "A required job did not succeed: $result"
+              exit 1
+            fi
+          done
