@@ -11,6 +11,7 @@ struct SettingsView: View {
                     if let relayURL = viewModel.relayURL {
                         LabeledContent("Address", value: relayURL.absoluteString)
                     }
+                    Button("Invite Another Device", action: viewModel.inviteAnotherDevice)
                 }
 
                 Section("History") {
@@ -40,6 +41,52 @@ struct SettingsView: View {
                 Button("Forget", role: .destructive, action: viewModel.forgetThisDevice)
                 Button("Cancel", role: .cancel) {}
             }
+            .sheet(isPresented: inviteSheetBinding) {
+                InviteDeviceSheet(state: viewModel.inviteState, dismiss: viewModel.dismissInvite)
+            }
         }
+    }
+
+    private var inviteSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.inviteState != .idle },
+            set: { isPresented in
+                if !isPresented { viewModel.dismissInvite() }
+            }
+        )
+    }
+}
+
+private struct InviteDeviceSheet: View {
+    let state: SettingsViewModel.InviteState
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            switch state {
+            case .idle:
+                EmptyView()
+            case .creating:
+                ProgressView("Preparing invite…")
+            case .ready(let qrUri):
+                if let image = QRCodeImage.render(qrUri) {
+                    image
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 280)
+                    Text("Scan this from the new device")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Couldn't render the QR code.")
+                }
+            case .failed(let message):
+                Text(message)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Close", action: dismiss)
+        }
+        .padding()
     }
 }

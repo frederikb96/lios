@@ -89,7 +89,23 @@ public struct PairingRedeem: Codable, Sendable {
     }
 }
 
-/// Mirrors `lios_protocol.wire.DevicePaired` — the response to `POST /api/devices/pair`.
+/// Mirrors `lios_protocol.wire.DeviceBootstrap` — the request body for
+/// `POST /api/devices/bootstrap`, registering the very first device in an otherwise-empty
+/// fleet. Every later device joins through `PairingRedeem` instead, which needs an existing
+/// device's token to mint the code it redeems — something has to be first, with no predecessor
+/// to ask.
+public struct DeviceBootstrap: Codable, Sendable {
+    public let platform: LiosPlatform
+    public let displayName: String
+
+    public init(platform: LiosPlatform, displayName: String) {
+        self.platform = platform
+        self.displayName = displayName
+    }
+}
+
+/// Mirrors `lios_protocol.wire.DevicePaired` — the response to `POST /api/devices/pair` and
+/// `POST /api/devices/bootstrap` alike (both hand back a new device's own credential).
 ///
 /// `deviceToken` is shown exactly once, here — the relay stores only its hash and cannot display
 /// it again afterwards, so the caller must persist it (Keychain) immediately on receipt.
