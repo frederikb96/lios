@@ -63,6 +63,8 @@ modules:
         ${FLATPAK_DEST}/share/metainfo/io.github.frederikb96.Lios.metainfo.xml
       - install -Dm644 packaging/io.github.frederikb96.Lios.svg
         ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.frederikb96.Lios.svg
+      - install -Dm644 packaging/io.github.frederikb96.Lios.service
+        ${FLATPAK_DEST}/share/dbus-1/services/io.github.frederikb96.Lios.service
     sources:
       - type: dir
         path: ..
