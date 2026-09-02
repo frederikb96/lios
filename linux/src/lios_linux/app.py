@@ -405,6 +405,11 @@ class LiosApplication(Adw.Application):
         except Exception:
             logger.exception("pairing failed")
             return
+        self.on_paired()
+
+    def on_paired(self) -> None:
+        """Called once this device has a device token and group key, however it got them --
+        the onboarding view (claim or join) and the `pair` CLI/action both funnel here."""
         self._connect_to_relay_if_paired()
 
     # -- Window ------------------------------------------------------------------------------
