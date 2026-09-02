@@ -10,6 +10,15 @@ final class SettingsViewModel {
     var maxItems: Double
     var maxAgeDays: Double
 
+    enum InviteState: Equatable {
+        case idle
+        case creating
+        case ready(qrUri: String)
+        case failed(String)
+    }
+
+    var inviteState: InviteState = .idle
+
     init() {
         let policy = SettingsViewModel.loadPolicy()
         maxItems = Double(policy.maxItems)
@@ -29,6 +38,34 @@ final class SettingsViewModel {
     func forgetThisDevice() {
         try? KeychainStore.eraseAll()
         AppState.shared.markUnpaired()
+    }
+
+    /// Mints a fresh pairing code for a new device to redeem, and packages it — together with
+    /// the group key this device already holds — into the same QR payload shape
+    /// `PairingViewModel` reads. The key never reaches the relay; only the code does.
+    func inviteAnotherDevice() {
+        inviteState = .creating
+        Task {
+            guard let session = LiosSession.loadFromKeychain() else {
+                inviteState = .failed("Not paired.")
+                return
+            }
+            do {
+                let created = try await session.makeRelayClient().createPairingSession()
+                let payload = try Pairing.buildPayload(
+                    relayUrl: session.relayURL.absoluteString, pairingCode: created.pairingCode,
+                    groupKey: session.groupKey)
+                let uri = try Pairing.encodeQrUri(payload)
+                inviteState = .ready(qrUri: uri)
+            } catch {
+                inviteState = .failed("Couldn't reach the relay.")
+                LogBuffer.shared.log(.error, "invite failed: \(error)", category: "pairing")
+            }
+        }
+    }
+
+    func dismissInvite() {
+        inviteState = .idle
     }
 
     /// The retention policy is a device-local preference, not a secret, so it lives in

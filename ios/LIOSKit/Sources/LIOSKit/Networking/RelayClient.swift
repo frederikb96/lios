@@ -5,12 +5,10 @@ import Foundation
 
 /// The REST surface `lios-relay` exposes, as far as this app needs it.
 ///
-/// 🚨 The relay (`relay/`) is being built in parallel and had no HTTP routes yet when this was
-/// written — only `lios_protocol.wire`'s request/response *shapes* exist. Everything below that
-/// is not a wire model field (endpoint paths, HTTP methods, which parts are headers versus JSON
-/// versus a raw body) is this app's own proposal, chosen to keep large payloads off base64 and
-/// out of JSON. Treat every path and header name here as provisional until it is checked against
-/// the relay's actual routes — they are all named as constants below for exactly that reason.
+/// The parts of `POST /api/items` that are not the sealed blob itself ride as headers rather
+/// than a JSON field or query param — a JSON body would need the blob base64-encoded too, which
+/// is exactly what carrying it as a raw `application/octet-stream` body is meant to avoid. The
+/// three header names below mirror `lios_protocol.headers` exactly.
 ///
 /// iOS never opens `GET /api/stream` — that is the Linux client's long-lived connection. This
 /// app instead learns about new items from an APNs push and fetches on demand, which is also why
@@ -19,6 +17,8 @@ import Foundation
 public final class RelayClient: Sendable {
 
     public enum Endpoint {
+        static func bootstrap(base: URL) -> URL { base.appendingPathComponent("api/devices/bootstrap") }
+        static func pairingSessions(base: URL) -> URL { base.appendingPathComponent("api/devices/pairing-sessions") }
         static func pair(base: URL) -> URL { base.appendingPathComponent("api/devices/pair") }
         static func pushToken(base: URL, deviceId: UUID) -> URL {
             base.appendingPathComponent("api/devices/\(deviceId.uuidString)/push-token")
@@ -66,6 +66,27 @@ public final class RelayClient: Sendable {
         self.encoder = encoder
     }
 
+    /// `POST /api/devices/bootstrap` — register the very first device in an otherwise-empty
+    /// fleet. No `Authorization` header: none exists yet. The relay answers `403` the moment any
+    /// device is already registered — the caller's job is to fall back to scanning a QR from
+    /// whichever device got there first, not to treat that as a hard failure.
+    public func bootstrapFirstDevice(platform: LiosPlatform, displayName: String) async throws -> DevicePaired {
+        var request = URLRequest(url: Endpoint.bootstrap(base: baseURL))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(DeviceBootstrap(platform: platform, displayName: displayName))
+        return try await send(request, decoding: DevicePaired.self)
+    }
+
+    /// `POST /api/devices/pairing-sessions` — mint a fresh pairing code on behalf of this
+    /// already-paired device, to embed (together with the group key this device already holds)
+    /// into a QR code for a new device to scan. Requires this device's own token.
+    public func createPairingSession() async throws -> PairingSessionCreated {
+        var request = authenticatedRequest(url: Endpoint.pairingSessions(base: baseURL))
+        request.httpMethod = "POST"
+        return try await send(request, decoding: PairingSessionCreated.self)
+    }
+
     /// `POST /api/devices/pair` — redeem a pairing code minted by an already-paired device for
     /// this device's own credential. No `Authorization` header: this call is what obtains one.
     public func redeemPairing(code: String, platform: LiosPlatform, displayName: String) async throws -> DevicePaired {
@@ -96,9 +117,12 @@ public final class RelayClient: Sendable {
         var request = authenticatedRequest(url: Endpoint.items(base: baseURL))
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        request.setValue(sealed.id.uuidString, forHTTPHeaderField: Header.itemId)
+        // Lowercased for consistency with the associated data `LiosItem.seal` authenticated
+        // under this same id (Python renders a UUID lowercase) — the relay itself parses either
+        // case, but a mismatched case in its own logs is one more thing to explain later.
+        request.setValue(sealed.id.uuidString.lowercased(), forHTTPHeaderField: Header.itemId)
         if let targetDeviceId {
-            request.setValue(targetDeviceId.uuidString, forHTTPHeaderField: Header.targetDeviceId)
+            request.setValue(targetDeviceId.uuidString.lowercased(), forHTTPHeaderField: Header.targetDeviceId)
         }
         if let sealedPreview, !sealedPreview.isEmpty {
             request.setValue(sealedPreview.base64EncodedString(), forHTTPHeaderField: Header.sealedPreview)

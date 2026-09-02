@@ -67,16 +67,26 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
         view.layer.addSublayer(preview)
     }
 
-    func metadataOutput(
+    // `AVCaptureMetadataOutputObjectsDelegate`'s requirement is nonisolated in the SDK, and this
+    // type is implicitly @MainActor (a `UIViewController` subclass) — providing a MainActor
+    // witness for it is exactly the conformance Swift 6 rejects. `nonisolated` here plus
+    // `MainActor.assumeIsolated` below is the honest fix rather than a workaround: the delegate
+    // is registered with `queue: .main` in `configureSession`, so this genuinely always runs on
+    // the main actor already, and the assertion states that guarantee instead of re-hopping to
+    // it.
+    nonisolated func metadataOutput(
         _ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject],
         from connection: AVCaptureConnection
     ) {
-        guard !hasDelivered else { return }
-        guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject, let value = object.stringValue
-        else {
-            return
+        MainActor.assumeIsolated {
+            guard !hasDelivered else { return }
+            guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                let value = object.stringValue
+            else {
+                return
+            }
+            hasDelivered = true
+            onCode?(value)
         }
-        hasDelivered = true
-        onCode?(value)
     }
 }

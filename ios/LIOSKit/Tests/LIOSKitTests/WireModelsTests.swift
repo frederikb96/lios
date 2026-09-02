@@ -51,4 +51,20 @@ final class WireModelsTests: XCTestCase {
         let paired = try makeDecoder().decode(DevicePaired.self, from: Data(json.utf8))
         XCTAssertEqual(paired.deviceToken, "tok_abc")
     }
+
+    func testEncodesDeviceBootstrapWithSnakeCaseFieldNames() throws {
+        let bootstrap = DeviceBootstrap(platform: .ios, displayName: "My iPhone")
+        let data = try makeEncoder().encode(bootstrap)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["display_name"] as? String, "My iPhone")
+        XCTAssertEqual(object["platform"] as? String, "ios")
+    }
+
+    func testDecodesAPairingSessionCreatedShapedLikeThePydanticModel() throws {
+        let json = """
+            {"pairing_code":"ABCD2345","expires_at":"2026-09-02T21:05:00Z"}
+            """
+        let session = try makeDecoder().decode(PairingSessionCreated.self, from: Data(json.utf8))
+        XCTAssertEqual(session.pairingCode, "ABCD2345")
+    }
 }

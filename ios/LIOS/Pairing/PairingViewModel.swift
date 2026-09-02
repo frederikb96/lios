@@ -6,17 +6,71 @@ import UIKit
 @Observable
 final class PairingViewModel {
     enum PairingState: Equatable {
+        case choosing
         case scanning
+        case enteringRelayURL
+        case bootstrapping
         case redeeming
         case failed(String)
     }
 
-    var state: PairingState = .scanning
+    var state: PairingState = .choosing
+    var relayURLText: String = ""
+
+    func chooseScan() {
+        state = .scanning
+    }
+
+    func chooseSetUpNewRelay() {
+        state = .enteringRelayURL
+    }
 
     func handleScannedCode(_ code: String) {
         state = .redeeming
         Task {
             await redeem(code)
+        }
+    }
+
+    /// The relay has no devices yet, so there is no QR to scan — whichever device gets here
+    /// first calls `POST /api/devices/bootstrap` directly. If another device beat this one to
+    /// it (the relay answers 403), that is not a hard failure: it means a QR now exists
+    /// somewhere and scanning is the right next step, not a broken setup.
+    func submitRelayURL() {
+        state = .bootstrapping
+        Task {
+            await bootstrap()
+        }
+    }
+
+    private func bootstrap() async {
+        guard let relayURL = URL(string: relayURLText), relayURL.scheme != nil else {
+            state = .failed("That doesn't look like a valid address.")
+            return
+        }
+        do {
+            let client = RelayClient(relayURL: relayURL, deviceToken: nil)
+            let displayName = UIDevice.current.name
+            let paired = try await client.bootstrapFirstDevice(platform: .ios, displayName: displayName)
+
+            // Bootstrapping never hands back a group key — the relay never holds one at all.
+            // This device mints the fleet's only key, right here, and becomes the root every
+            // later device's QR ultimately traces back to.
+            let groupKey = Sealing.generateGroupKey()
+
+            try KeychainStore.saveRelayURL(relayURL)
+            try KeychainStore.saveGroupKey(groupKey)
+            try KeychainStore.saveDeviceId(paired.deviceId)
+            try KeychainStore.saveDeviceToken(paired.deviceToken)
+
+            LogBuffer.shared.log(.info, "bootstrapped as the first device \(paired.deviceId)", category: "pairing")
+            AppState.shared.markPaired(relayURL: relayURL, deviceId: paired.deviceId)
+            UIApplication.shared.registerForRemoteNotifications()
+        } catch let error as RelayClient.HTTPError where error.statusCode == 403 {
+            state = .failed("This relay already has a paired device. Scan its QR code instead of setting up a new one.")
+        } catch {
+            state = .failed("Couldn't reach that relay. Check the address and try again.")
+            LogBuffer.shared.log(.error, "bootstrap failed: \(error)", category: "pairing")
         }
     }
 
@@ -56,6 +110,6 @@ final class PairingViewModel {
     }
 
     func retry() {
-        state = .scanning
+        state = .choosing
     }
 }
