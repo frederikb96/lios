@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-02
+
+### Fixed
+
+- `POST /api/items` reads `target_device_id` as a query parameter rather than a header,
+  matching both clients. A targeted send against 0.1.0 was silently broadcast to every
+  paired device instead of the one named.
+
 ## [0.1.0] - 2026-09-02
 
 ### Added
