@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lios_linux.config import AppConfig
+from lios_linux.config import DEFAULT_RELAY_URL, AppConfig
 
 
 def test_defaults_when_file_does_not_exist(tmp_path: Path) -> None:
     config = AppConfig.load(tmp_path / "config.json")
-    assert config.relay_url == ""
+    assert config.relay_url == DEFAULT_RELAY_URL
     assert config.max_items == 50
     assert config.max_age_days == 7
 

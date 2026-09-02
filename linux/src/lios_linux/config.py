@@ -18,12 +18,16 @@ DEFAULT_MAX_ITEMS = 50
 #: How many days an item survives regardless of the item cap -- spec row 57's default.
 DEFAULT_MAX_AGE_DAYS = 7
 
+#: The relay Freddy runs. Shipped as the default so there is nothing to type on a fresh
+#: install -- editable in preferences for anyone self-hosting their own.
+DEFAULT_RELAY_URL = "https://lios.frederikberg.net"
+
 
 @dataclass
 class AppConfig:
-    """Everything the preferences dialog edits. `relay_url` is empty until pairing completes."""
+    """Everything the preferences dialog edits."""
 
-    relay_url: str = ""
+    relay_url: str = DEFAULT_RELAY_URL
     max_items: int = DEFAULT_MAX_ITEMS
     max_age_days: int = DEFAULT_MAX_AGE_DAYS
     autostart_requested: bool = False

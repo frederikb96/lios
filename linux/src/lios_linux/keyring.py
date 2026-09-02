@@ -87,3 +87,13 @@ def clear_all() -> None:
     """Remove both secrets -- called before starting a fresh pairing."""
     Secret.password_clear_sync(_SCHEMA, _DEVICE_TOKEN_ATTRS, None)
     Secret.password_clear_sync(_SCHEMA, _GROUP_KEY_ATTRS, None)
+
+
+def is_paired() -> bool:
+    """Whether this device has completed pairing -- both secrets are present."""
+    try:
+        load_device_token()
+        load_group_key()
+    except SecretNotFound:
+        return False
+    return True
