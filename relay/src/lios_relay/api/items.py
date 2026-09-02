@@ -6,11 +6,12 @@ octet-stream` body -- not JSON with the blob base64-encoded -- so an encrypted p
 pay a 33% size penalty getting there. Everything else (the catch-up list, the stream) is
 JSON built from `lios_protocol.wire.ItemSummary`, which never includes the blob itself.
 
-The parts of `POST /api/items` that are not the body ride as headers rather than a JSON
-field or query param, all defined in `lios_protocol.headers`: `X-Item-Id` (required -- see
-its own note below), `X-Target-Device-Id` (optional), `X-Sealed-Preview` (optional,
-base64-encoded, opaque). A JSON body would need the blob itself base64-encoded too, which is
-exactly what carrying it as a raw octet-stream body is meant to avoid.
+The parts of `POST /api/items` that are not the body ride two ways: `target_device_id` as a
+query param (unrelated to the blob, and the more conventional place for a filter), `X-Item-Id`
+and `X-Sealed-Preview` as headers, both defined in `lios_protocol.headers` (required and
+optional respectively -- see the note on `X-Item-Id` below). A JSON body would need the blob
+itself base64-encoded too, which is exactly what carrying it as a raw octet-stream body is
+meant to avoid.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER, TARGET_DEVICE_ID_HEADER
+from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER
 from lios_protocol.wire import ItemCreated, ItemSummary, StreamEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,13 +73,6 @@ async def create_item_endpoint(
             "server-assigned id would make the blob the client just sealed unopenable.",
         ),
     ],
-    x_target_device_id: Annotated[
-        str | None,
-        Header(
-            alias=TARGET_DEVICE_ID_HEADER,
-            description="Narrow delivery to one device; omitted means every other paired device.",
-        ),
-    ] = None,
     x_sealed_preview: Annotated[
         str | None,
         Header(
@@ -88,6 +82,10 @@ async def create_item_endpoint(
             "useful banner without fetching the item's own payload.",
         ),
     ] = None,
+    target_device_id: uuid.UUID | None = Query(
+        default=None,
+        description="Narrow delivery to one device; omitted means every other paired device.",
+    ),
 ) -> ItemCreated:
     """Store a sealed item and notify every intended recipient.
 
@@ -105,16 +103,6 @@ async def create_item_endpoint(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ITEM_ID_HEADER} is not a UUID"
         ) from exc
-
-    target_device_id: uuid.UUID | None = None
-    if x_target_device_id is not None:
-        try:
-            target_device_id = uuid.UUID(x_target_device_id)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{TARGET_DEVICE_ID_HEADER} is not a UUID",
-            ) from exc
 
     sealed_preview: bytes | None = None
     if x_sealed_preview:

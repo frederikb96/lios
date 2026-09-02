@@ -12,7 +12,7 @@ All endpoints except `GET /health`, `GET /health/live`, `POST /api/devices/boots
 
 | Method | Path | |
 |---|---|---|
-| POST | `/api/items` | Store a sealed item (raw `application/octet-stream` body). `X-Item-Id` (client-generated, required), `X-Target-Device-Id` (optional -- narrows delivery, omitted broadcasts) and `X-Sealed-Preview` (optional, base64, opaque) ride as headers. See [`docs/api.md`](../docs/api.md) for the full contract. |
+| POST | `/api/items?target_device_id=` | Store a sealed item (raw `application/octet-stream` body). `target_device_id` narrows delivery, omitted broadcasts. `X-Item-Id` (client-generated, required) and `X-Sealed-Preview` (optional, base64, opaque) ride as headers. See [`docs/api.md`](../docs/api.md) for the full contract. |
 | GET | `/api/items/{id}` | Fetch one item's sealed blob, raw. |
 | GET | `/api/items?since=` | Catch-up list of `ItemSummary` (clear metadata only) created after the given timestamp. |
 | DELETE | `/api/items/{id}` | A device acknowledging it has taken an item. |

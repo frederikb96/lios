@@ -8,8 +8,11 @@ from lios_protocol import headers
 
 def test_item_request_header_names() -> None:
     assert headers.ITEM_ID_HEADER == "X-Item-Id"
-    assert headers.TARGET_DEVICE_ID_HEADER == "X-Target-Device-Id"
     assert headers.SEALED_PREVIEW_HEADER == "X-Sealed-Preview"
+
+
+def test_target_device_id_query_param_name() -> None:
+    assert headers.TARGET_DEVICE_ID_QUERY_PARAM == "target_device_id"
 
 
 def test_push_payload_field_names() -> None:
