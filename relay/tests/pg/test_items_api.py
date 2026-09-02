@@ -7,7 +7,11 @@ import uuid
 
 from httpx import AsyncClient
 from lios_protocol.crypto import generate_group_key, seal
-from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER, TARGET_DEVICE_ID_HEADER
+from lios_protocol.headers import (
+    ITEM_ID_HEADER,
+    SEALED_PREVIEW_HEADER,
+    TARGET_DEVICE_ID_QUERY_PARAM,
+)
 
 from lios_relay.database.connection import DatabaseConnection
 from lios_relay.database.models import Item
@@ -16,18 +20,13 @@ from tests.pg.conftest import auth_headers, new_uuid
 
 
 def _item_headers(
-    token: str,
-    *,
-    item_id: uuid.UUID | None = None,
-    target_device_id: str | None = None,
-    sealed_preview: bytes | None = None,
+    token: str, *, item_id: uuid.UUID | None = None, sealed_preview: bytes | None = None,
 ) -> dict[str, str]:
     """Auth plus the item-creation headers -- `X-Item-Id` always present, since the client
-    always generates its own before ever sealing a blob."""
+    always generates its own before ever sealing a blob. `target_device_id` is a query param,
+    not a header -- see `_post_item`."""
     headers = dict(auth_headers(token))
     headers[ITEM_ID_HEADER] = str(item_id or new_uuid())
-    if target_device_id:
-        headers[TARGET_DEVICE_ID_HEADER] = target_device_id
     if sealed_preview:
         headers[SEALED_PREVIEW_HEADER] = base64.b64encode(sealed_preview).decode("ascii")
     return headers
@@ -42,12 +41,10 @@ async def _post_item(
     target_device_id: str | None = None,
     sealed_preview: bytes | None = None,
 ) -> dict:
+    params = {TARGET_DEVICE_ID_QUERY_PARAM: target_device_id} if target_device_id else {}
     resp = await client.post(
-        "/api/items", content=blob,
-        headers=_item_headers(
-            token, item_id=item_id, target_device_id=target_device_id,
-            sealed_preview=sealed_preview,
-        ),
+        "/api/items", content=blob, params=params,
+        headers=_item_headers(token, item_id=item_id, sealed_preview=sealed_preview),
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -209,6 +206,7 @@ async def test_targeted_item_rejects_unknown_target(
 ) -> None:
     resp = await client.post(
         "/api/items", content=b"x" * 8,
-        headers=_item_headers(laptop_token, target_device_id=str(new_uuid())),
+        params={TARGET_DEVICE_ID_QUERY_PARAM: str(new_uuid())},
+        headers=_item_headers(laptop_token),
     )
     assert resp.status_code == 404
