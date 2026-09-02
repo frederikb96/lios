@@ -76,13 +76,22 @@ class Item(Base):
     devices this item is waiting on is the `ItemRecipient` snapshot taken at creation, which
     is what pruning checks against -- a device pairing after this item was created is never
     silently expected to ack it.
+
+    `id` is supplied by the client, not generated here: the sealed blob's AEAD associated
+    data binds the item id, so the sender must know it before the relay is ever contacted --
+    a server-assigned id would make the blob it just sealed unopenable. A second `POST` with
+    an id already in use is a conflict (`api.items` returns 409), never silently overwritten.
+
+    `sealed_preview` is a small blob the sender seals separately under the same group key
+    (type plus a short text snippet or filename) so an iOS Notification Service Extension can
+    rewrite a generic push into a useful banner without ever fetching the item's own payload.
+    Opaque here too -- forwarded into the APNs push and never inspected. `None` when the
+    sender didn't attach one, which degrades to a generic banner rather than failing.
     """
 
     __tablename__ = "items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
-    )
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
     sender_device_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
     )
@@ -90,6 +99,7 @@ class Item(Base):
         PGUUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=True
     )
     sealed_blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sealed_preview: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True

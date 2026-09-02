@@ -5,16 +5,25 @@ The two content endpoints (create, fetch) carry the sealed blob as a raw `applic
 octet-stream` body -- not JSON with the blob base64-encoded -- so an encrypted photo does not
 pay a 33% size penalty getting there. Everything else (the catch-up list, the stream) is
 JSON built from `lios_protocol.wire.ItemSummary`, which never includes the blob itself.
+
+The parts of `POST /api/items` that are not the body ride as headers rather than a JSON
+field or query param, all defined in `lios_protocol.headers`: `X-Item-Id` (required -- see
+its own note below), `X-Target-Device-Id` (optional), `X-Sealed-Preview` (optional,
+base64-encoded, opaque). A JSON body would need the blob itself base64-encoded too, which is
+exactly what carrying it as a raw octet-stream body is meant to avoid.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER, TARGET_DEVICE_ID_HEADER
 from lios_protocol.wire import ItemCreated, ItemSummary, StreamEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +31,7 @@ from lios_relay.auth import require_device
 from lios_relay.config import RelayConfig, get_config
 from lios_relay.database.models import Device, Item
 from lios_relay.database.repository import (
+    ItemIdConflict,
     ack_item,
     create_item,
     get_device,
@@ -53,10 +63,31 @@ async def create_item_endpoint(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     device: Annotated[Device, Depends(require_device)],
-    target_device_id: uuid.UUID | None = Query(
-        default=None,
-        description="Narrow delivery to one device; omitted means every other paired device.",
-    ),
+    x_item_id: Annotated[
+        str,
+        Header(
+            alias=ITEM_ID_HEADER,
+            description="Client-generated -- the sealed blob's AEAD associated data binds "
+            "this id, so it must exist before the client ever contacts the relay. A "
+            "server-assigned id would make the blob the client just sealed unopenable.",
+        ),
+    ],
+    x_target_device_id: Annotated[
+        str | None,
+        Header(
+            alias=TARGET_DEVICE_ID_HEADER,
+            description="Narrow delivery to one device; omitted means every other paired device.",
+        ),
+    ] = None,
+    x_sealed_preview: Annotated[
+        str | None,
+        Header(
+            alias=SEALED_PREVIEW_HEADER,
+            description="Base64-encoded, opaque -- sealed by the sender under the same group "
+            "key so a Notification Service Extension can rewrite a generic push into a "
+            "useful banner without fetching the item's own payload.",
+        ),
+    ] = None,
 ) -> ItemCreated:
     """Store a sealed item and notify every intended recipient.
 
@@ -67,6 +98,34 @@ async def create_item_endpoint(
     read unbounded.
     """
     config = get_config()
+
+    try:
+        item_id = uuid.UUID(x_item_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"{ITEM_ID_HEADER} is not a UUID"
+        ) from exc
+
+    target_device_id: uuid.UUID | None = None
+    if x_target_device_id is not None:
+        try:
+            target_device_id = uuid.UUID(x_target_device_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{TARGET_DEVICE_ID_HEADER} is not a UUID",
+            ) from exc
+
+    sealed_preview: bytes | None = None
+    if x_sealed_preview:
+        try:
+            sealed_preview = base64.b64decode(x_sealed_preview, validate=True)
+        except binascii.Error as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{SEALED_PREVIEW_HEADER} is not valid base64",
+            ) from exc
+
     content_length = request.headers.get("content-length")
     if content_length is None:
         raise HTTPException(
@@ -97,25 +156,35 @@ async def create_item_endpoint(
     else:
         recipient_ids = await list_other_device_ids(session, exclude=device.id)
 
-    item = await create_item(
-        session,
-        sender_device_id=device.id,
-        target_device_id=target_device_id,
-        sealed_blob=sealed_blob,
-        recipient_ids=recipient_ids,
-    )
-    await session.flush()
+    try:
+        item = await create_item(
+            session,
+            item_id=item_id,
+            sender_device_id=device.id,
+            target_device_id=target_device_id,
+            sealed_blob=sealed_blob,
+            sealed_preview=sealed_preview,
+            recipient_ids=recipient_ids,
+        )
+        await session.flush()
+    except ItemIdConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     event = StreamEvent(item=_item_summary(item))
     get_broadcaster().publish(event.model_dump_json())
 
-    await _push_to_recipients(session, config, recipient_ids, item.id)
+    await _push_to_recipients(session, config, recipient_ids, item.id, device.id, sealed_preview)
 
     return ItemCreated(id=item.id, created_at=item.created_at)
 
 
 async def _push_to_recipients(
-    session: AsyncSession, config: RelayConfig, recipient_ids: list[uuid.UUID], item_id: uuid.UUID
+    session: AsyncSession,
+    config: RelayConfig,
+    recipient_ids: list[uuid.UUID],
+    item_id: uuid.UUID,
+    sender_device_id: uuid.UUID,
+    sealed_preview: bytes | None,
 ) -> None:
     """Best-effort APNs push to every recipient that is an iOS device with a push token.
 
@@ -132,7 +201,10 @@ async def _push_to_recipients(
     if not tokens:
         return
     try:
-        await send_new_item_push(config=config.apns, tokens=tokens, item_id=item_id)
+        await send_new_item_push(
+            config=config.apns, tokens=tokens, item_id=item_id,
+            sender_device_id=sender_device_id, sealed_preview=sealed_preview,
+        )
     except PushUnavailable:
         pass
     except Exception:

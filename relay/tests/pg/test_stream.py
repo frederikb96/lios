@@ -13,7 +13,9 @@ call on the one event loop that owns the engine the lifespan just created.
 from __future__ import annotations
 
 import json
+import uuid
 
+from lios_protocol.headers import ITEM_ID_HEADER
 from starlette.testclient import TestClient
 
 from lios_relay.database.connection import DatabaseConnection
@@ -46,7 +48,10 @@ async def test_stream_announces_a_new_item(migrated_db: DatabaseConnection) -> N
         ) as ws:
             post_resp = client.post(
                 "/api/items", content=b"streamed item",
-                headers={"Authorization": f"Bearer {laptop_token}"},
+                headers={
+                    "Authorization": f"Bearer {laptop_token}",
+                    ITEM_ID_HEADER: str(uuid.uuid4()),
+                },
             )
             assert post_resp.status_code == 201
 

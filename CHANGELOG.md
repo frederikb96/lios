@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   against a per-item recipient snapshot, pruning on a configurable retention policy, and
   pushing a generic APNs notification when a recipient is an iOS device with a registered
   token. WebSocket stream for live delivery, bearer device-token auth throughout, a
-  first-device bootstrap endpoint, Postgres via SQLAlchemy async + Alembic.
+  first-device bootstrap endpoint, Postgres via SQLAlchemy async + Alembic. Item ids are
+  client-generated (the sealed blob's own associated data binds the id, so the relay cannot
+  assign one) and carried, together with an optional device target and an optional opaque
+  sealed preview for push banners, as headers on `POST /api/items` rather than a JSON body or
+  query params.
 - Podman-based dev and prod compose stacks, a multi-stage Dockerfile, and a Helm chart for
   Kubernetes deployment.
