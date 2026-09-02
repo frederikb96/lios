@@ -1,0 +1,31 @@
+# Everything the image build does not need. Without this the build context balloons with
+# dependency trees the build reinstalls from lockfiles anyway.
+
+.git
+.gitignore
+**/.git
+
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Secrets never belong in a build context, even though they are gitignored.
+.env
+.dev.env
+.prod.env
+config-custom/
+
+docs/
+charts/
+.github/
+.claude/
+compose*.yaml
+CHANGELOG.md
+
+linux/
+ios/

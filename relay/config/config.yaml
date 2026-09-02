@@ -1,0 +1,46 @@
+# LIOS Relay Configuration
+#
+# This file contains ALL infrastructure defaults, with comments. It is baked into the image
+# at build time and is always present. Override sparingly with config-custom/config.override.yaml
+# (sparse, only the values that differ) or LIOS_<SECTION>_<KEY> environment variables.
+#
+# The relay never has an in-code fallback for anything -- it fails fast at startup if a
+# required value (database.url) is still empty after every override is applied.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  log_level: INFO
+  cors_origins: []            # same-origin serving by default; empty disables CORS
+
+database:
+  url: "${LIOS_DATABASE_URL}"
+  pool_size: 10
+  max_overflow: 5
+
+# Ceiling on one item's sealed blob, enforced while the upload is being read so an oversized
+# item cannot exhaust memory before it is rejected.
+items:
+  max_size_bytes: 26214400    # 25 MiB
+
+# The relay never becomes an archive: a background task prunes on this policy, matching the
+# retention each client keeps in its own local history.
+retention:
+  max_items: 50                # newest N items kept; anything older is pruned regardless of ack
+  max_age_days: 7
+  prune_interval_seconds: 300
+
+pairing:
+  # How long a pairing code minted by POST /api/devices/pairing-sessions stays redeemable.
+  code_ttl_seconds: 600
+
+# APNs push for iOS devices. Optional -- the relay starts and serves every other endpoint
+# fine with no key configured; POST /api/items simply sends no push in that case. auth_key_b64
+# is the .p8 private key's PEM contents, base64-encoded (a PEM has embedded newlines, which
+# are awkward to carry through a plain env var or .env file).
+apns:
+  key_id: "${LIOS_APNS_KEY_ID}"
+  team_id: "${LIOS_APNS_TEAM_ID}"
+  topic: com.frederikberg.lios
+  auth_key_b64: "${LIOS_APNS_AUTH_KEY_B64}"
+  send_timeout_seconds: 10

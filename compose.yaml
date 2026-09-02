@@ -1,0 +1,45 @@
+name: lios
+
+services:
+  relay:
+    image: ghcr.io/frederikb96/lios-relay:latest
+    container_name: lios-relay
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./relay/config-custom:/app/relay/config-custom:ro,Z
+    environment:
+      LIOS_DATABASE_URL: "postgresql+asyncpg://lios:${POSTGRES_PASSWORD}@postgres:5432/lios"
+      LIOS_APNS_KEY_ID: "${LIOS_APNS_KEY_ID:-}"
+      LIOS_APNS_TEAM_ID: "${LIOS_APNS_TEAM_ID:-}"
+      LIOS_APNS_AUTH_KEY_B64: "${LIOS_APNS_AUTH_KEY_B64:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  postgres:
+    image: docker.io/postgres:17-alpine
+    container_name: lios-postgres
+    environment:
+      POSTGRES_DB: lios
+      POSTGRES_USER: lios
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lios -d lios"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - lios-pgdata:/var/lib/postgresql:Z
+    restart: unless-stopped
+
+volumes:
+  lios-pgdata:
