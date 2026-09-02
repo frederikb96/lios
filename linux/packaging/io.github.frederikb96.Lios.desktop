@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=LIOS
+Comment=Send the clipboard, a file, or text to a paired phone
+Exec=lios show
+Icon=io.github.frederikb96.Lios
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=true
+DBusActivatable=true
+X-GNOME-UsesNotifications=true
