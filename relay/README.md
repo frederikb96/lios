@@ -7,20 +7,21 @@ item's content -- see [`lios-protocol`](../protocol) for the encryption itself.
 
 ## API
 
-All endpoints except `GET /health` and `POST /api/devices/pair` require `Authorization:
-Bearer <device_token>`.
+All endpoints except `GET /health`, `GET /health/live`, `POST /api/devices/bootstrap` and
+`POST /api/devices/pair` require `Authorization: Bearer <device_token>`.
 
 | Method | Path | |
 |---|---|---|
-| POST | `/api/items` | Store a sealed item (raw `application/octet-stream` body). `?target_device_id=` narrows delivery; omitted broadcasts to every other paired device. |
+| POST | `/api/items` | Store a sealed item (raw `application/octet-stream` body). `X-Item-Id` (client-generated, required), `X-Target-Device-Id` (optional -- narrows delivery, omitted broadcasts) and `X-Sealed-Preview` (optional, base64, opaque) ride as headers. See [`docs/api.md`](../docs/api.md) for the full contract. |
 | GET | `/api/items/{id}` | Fetch one item's sealed blob, raw. |
 | GET | `/api/items?since=` | Catch-up list of `ItemSummary` (clear metadata only) created after the given timestamp. |
 | DELETE | `/api/items/{id}` | A device acknowledging it has taken an item. |
 | GET | `/api/stream` | WebSocket; announces each new item as it arrives. See `lios_relay.api.stream`'s module docstring for the reconnect contract. |
+| POST | `/api/devices/bootstrap` | Register the very first device in an empty fleet -- no token required, refused once any device exists. |
 | POST | `/api/devices/pairing-sessions` | An already-paired device mints a fresh pairing code. |
-| POST | `/api/devices/pair` | Redeem a pairing code for a device token -- the one endpoint that needs no token. |
+| POST | `/api/devices/pair` | Redeem a pairing code for a device token -- the one endpoint after bootstrap that needs no token. |
 | POST | `/api/devices/{id}/push-token` | Register an APNs token for the caller's own device. |
-| GET | `/health` | For the Kubernetes probes. |
+| GET | `/health` / `/health/live` | Readiness / liveness, for the Kubernetes probes. |
 
 Every request/response shape is a `lios_protocol.wire` Pydantic model, shared with every
 client so the contract cannot drift.

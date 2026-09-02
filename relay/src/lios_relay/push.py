@@ -2,10 +2,13 @@
 speaks to APNs.
 
 The relay can never read an item's content, so the push it sends is deliberately generic:
-a plain alert plus `mutable-content: 1` and the item id riding alongside `aps`, which is
-what lets an iOS Notification Service Extension intercept it, decrypt the item on-device,
-and rewrite the banner before it is shown. The alert text itself is only ever seen if the
-extension does not run for some reason -- it must never claim to say what the item is.
+a plain alert plus `mutable-content: 1` and the item id, sender device id, and an optional
+opaque `sealed_preview` riding alongside `aps` (never inside it, which is reserved). That
+combination is what lets an iOS Notification Service Extension intercept the push, decrypt
+`sealed_preview` on-device under the shared group key, and rewrite the banner before it is
+shown -- the extension never fetches the item's own payload to do this. The alert text set
+here is only ever seen if the extension does not run for some reason -- it must never claim
+to say what the item is.
 
 Best-effort throughout: a push failure must never turn an otherwise-successful
 `POST /api/items` into an error response, since the item itself was already stored and
@@ -22,6 +25,11 @@ import uuid
 
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
+from lios_protocol.headers import (
+    PUSH_ITEM_ID_KEY,
+    PUSH_SEALED_PREVIEW_KEY,
+    PUSH_SENDER_DEVICE_ID_KEY,
+)
 
 from lios_relay.config import ApnsConfig
 
@@ -38,9 +46,19 @@ class PushUnavailable(RuntimeError):
 
 
 async def send_new_item_push(
-    *, config: ApnsConfig, tokens: list[str], item_id: uuid.UUID
+    *,
+    config: ApnsConfig,
+    tokens: list[str],
+    item_id: uuid.UUID,
+    sender_device_id: uuid.UUID,
+    sealed_preview: bytes | None,
 ) -> list[str]:
     """Push a generic "new item" notification to every APNs token in `tokens`.
+
+    `sealed_preview`, if the sender attached one, is forwarded base64-encoded exactly as
+    received -- this module has no group key and never opens it. Omitted entirely rather
+    than sent empty when absent, so the extension's own "was one attached at all" check
+    stays a simple key lookup.
 
     Returns the subset of `tokens` APNs reported permanently gone (`BadDeviceToken`,
     `Unregistered`, or a 410 status) -- the caller owns removing those from the device
@@ -57,14 +75,17 @@ async def send_new_item_push(
         raise PushUnavailable("no device token to push to")
 
     key = base64.b64decode(config.auth_key_b64).decode("utf-8")
-    message = {
+    message: dict[str, object] = {
         "aps": {
             "alert": {"title": "LIOS", "body": "New item"},
             "mutable-content": 1,
             "sound": "default",
         },
-        "lios_item_id": str(item_id),
+        PUSH_ITEM_ID_KEY: str(item_id),
+        PUSH_SENDER_DEVICE_ID_KEY: str(sender_device_id),
     }
+    if sealed_preview:
+        message[PUSH_SEALED_PREVIEW_KEY] = base64.b64encode(sealed_preview).decode("ascii")
 
     client = APNs(
         key=key, key_id=config.key_id, team_id=config.team_id, topic=config.topic,

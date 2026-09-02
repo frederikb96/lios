@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import update
@@ -35,8 +36,8 @@ async def test_prune_deletes_items_past_max_age(migrated_db: DatabaseConnection)
         phone = await get_device_by_token(session, phone_token)
         assert laptop and phone
         item = await create_item(
-            session, sender_device_id=laptop.id, target_device_id=None,
-            sealed_blob=b"old news", recipient_ids=[phone.id],
+            session, item_id=uuid.uuid4(), sender_device_id=laptop.id, target_device_id=None,
+            sealed_blob=b"old news", sealed_preview=None, recipient_ids=[phone.id],
         )
         item_id = item.id
 
@@ -64,8 +65,8 @@ async def test_prune_keeps_only_the_newest_max_items(migrated_db: DatabaseConnec
         assert laptop and phone
         for i in range(5):
             await create_item(
-                session, sender_device_id=laptop.id, target_device_id=None,
-                sealed_blob=f"item {i}".encode(), recipient_ids=[phone.id],
+                session, item_id=uuid.uuid4(), sender_device_id=laptop.id, target_device_id=None,
+                sealed_blob=f"item {i}".encode(), sealed_preview=None, recipient_ids=[phone.id],
             )
 
     await run_prune_pass(
@@ -86,8 +87,8 @@ async def test_prune_deletes_a_fully_acked_item_immediately(
         phone = await get_device_by_token(session, phone_token)
         assert laptop and phone
         item = await create_item(
-            session, sender_device_id=laptop.id, target_device_id=None,
-            sealed_blob=b"acked already", recipient_ids=[phone.id],
+            session, item_id=uuid.uuid4(), sender_device_id=laptop.id, target_device_id=None,
+            sealed_blob=b"acked already", sealed_preview=None, recipient_ids=[phone.id],
         )
         item_id = item.id
         await ack_item(session, item_id, phone.id)
@@ -109,8 +110,8 @@ async def test_prune_keeps_an_unacked_item_within_retention(
         phone = await get_device_by_token(session, phone_token)
         assert laptop and phone
         item = await create_item(
-            session, sender_device_id=laptop.id, target_device_id=None,
-            sealed_blob=b"still waiting", recipient_ids=[phone.id],
+            session, item_id=uuid.uuid4(), sender_device_id=laptop.id, target_device_id=None,
+            sealed_blob=b"still waiting", sealed_preview=None, recipient_ids=[phone.id],
         )
         item_id = item.id
 

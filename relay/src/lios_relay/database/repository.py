@@ -15,9 +15,14 @@ from typing import cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lios_relay.database.models import Device, Item, ItemAck, ItemRecipient, PairingSession
+
+
+class ItemIdConflict(Exception):
+    """`create_item` was asked to store an id already in use by another item."""
 
 
 def hash_token(token: str) -> str:
@@ -114,26 +119,43 @@ async def create_device(
 async def create_item(
     session: AsyncSession,
     *,
+    item_id: uuid.UUID,
     sender_device_id: uuid.UUID,
     target_device_id: uuid.UUID | None,
     sealed_blob: bytes,
+    sealed_preview: bytes | None,
     recipient_ids: list[uuid.UUID],
 ) -> Item:
     """Store a sealed item and snapshot the devices it is waiting on.
 
-    `recipient_ids` is the set the caller already resolved (either `[target_device_id]` or
-    every other currently-paired device) -- kept as an explicit parameter rather than
-    re-derived here, so the same list that decides `ItemRecipient` rows is also what a caller
-    can use to decide which devices to push to.
+    `item_id` is the caller's -- the sealed blob's own associated data binds it, so it must
+    already exist before the relay is ever contacted; this never generates one. `recipient_ids`
+    is the set the caller already resolved (either `[target_device_id]` or every other
+    currently-paired device) -- kept as an explicit parameter rather than re-derived here, so
+    the same list that decides `ItemRecipient` rows is also what a caller can use to decide
+    which devices to push to.
+
+    Raises:
+        ItemIdConflict: `item_id` is already in use by another item.
     """
     item = Item(
+        id=item_id,
         sender_device_id=sender_device_id,
         target_device_id=target_device_id,
         sealed_blob=sealed_blob,
+        sealed_preview=sealed_preview,
         size_bytes=len(sealed_blob),
     )
     session.add(item)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        # Left to the caller's session-scoped context manager to roll back -- the
+        # transaction is already aborted at the database level once a constraint violation
+        # reaches here, and a second rollback attempted from inside this function would race
+        # whatever the outer `DatabaseConnection.session()` does with the same session on the
+        # way out.
+        raise ItemIdConflict(f"item id {item_id} is already in use") from exc
     for device_id in recipient_ids:
         session.add(ItemRecipient(item_id=item.id, device_id=device_id))
     return item
