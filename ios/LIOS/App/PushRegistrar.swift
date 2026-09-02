@@ -55,14 +55,22 @@ final class PushRegistrar: NSObject, UIApplicationDelegate, UNUserNotificationCe
     }
 
     /// The one moment this app is allowed to write the pasteboard or open a share sheet: an
-    /// explicit tap brought the app to the foreground, which is a real UI context. Extract the
-    /// `Sendable` payload dictionary before hopping, per the same nonisolated-protocol-requirement
-    /// pattern as the delegate methods above.
+    /// explicit tap brought the app to the foreground, which is a real UI context.
+    ///
+    /// `userInfo` (`[AnyHashable: Any]`) is not `Sendable`, so it is decoded right here, on this
+    /// nonisolated method's own thread, into `PushPayload.Decoded` — plain `UUID`s and `Data` —
+    /// before anything hops to `NotificationRouter`'s `@MainActor`. Sending the raw dictionary
+    /// across that boundary instead is exactly what Swift 6 rejects.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
-        await NotificationRouter.shared.handleTap(userInfo: userInfo)
+        guard let decoded = PushPayload.decode(userInfo: userInfo) else {
+            LogBuffer.shared.log(
+                .warning, "tapped notification carried no recognisable LIOS payload", category: "push")
+            return
+        }
+        await NotificationRouter.shared.handleTap(decoded: decoded)
     }
 
     private static func uploadPushToken(tokenHex: String) async {
