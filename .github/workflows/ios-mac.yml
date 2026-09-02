@@ -76,7 +76,14 @@ jobs:
           plutil -p "$notify_plist" > /tmp/notify-info.txt
           grep -q 'com.apple.usernotifications.service' /tmp/notify-info.txt \
             || { echo '::error::LIOSNotify is missing its notification-service extension point'; cat /tmp/notify-info.txt; exit 1; }
-          echo 'background mode and both extension points survived into the built bundle'
+          # An appex with an empty CFBundleDisplayName is refused at install time, not at build
+          # time, so without this the failure surfaces as an opaque "Unable to Install".
+          for plist in /tmp/share-info.txt /tmp/notify-info.txt; do
+            grep -qE '"CFBundleDisplayName" => "[^"]+"' "$plist" \
+              || { echo "::error::an extension has no non-empty CFBundleDisplayName; it will not install"; \
+                   cat "$plist"; exit 1; }
+          done
+          echo 'background mode, both extension points and both display names survived into the built bundle'
 
       - name: Test what Linux cannot
         run: swift test --package-path LIOSKit
