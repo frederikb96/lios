@@ -1,0 +1,69 @@
+id: io.github.frederikb96.Lios
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: lios
+
+# Only what portals cannot cover. Background, GlobalShortcuts, Notification, FileChooser and
+# FileTransfer all go through the session's xdg-desktop-portal and need no finish-args here.
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=xdg-download
+  # The Secret Service (device token, group key -- see keyring.py) is a filtered D-Bus name
+  # grant, not the whole session bus: --socket=session-bus is deliberately not requested.
+  - --talk-name=org.freedesktop.secrets
+
+modules:
+  # wl-clipboard is GPL-3.0-or-later. It is spawned as a subprocess (clipboard/wl.py), never
+  # linked -- aggregation, not a derivative work, so this application stays MIT. Built from
+  # source here, which satisfies the GPL source-offer obligation for what is bundled.
+  - name: wl-clipboard
+    buildsystem: meson
+    # The default fish-completion directory is outside /app and unwritable in the sandbox;
+    # bash and zsh completions install under /app without issue and are left enabled.
+    config-opts:
+      - -Dfishcompletiondir=no
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.3.0
+        commit: 67a7b937895bceec1ae5ccebb10216f63f70ca1b
+
+  # cryptography, pydantic and qrcode, as prebuilt manylinux/pure-Python wheels pinned by URL
+  # and sha256 (generated with flatpak-builder-tools' flatpak-pip-generator, then corrected by
+  # hand to manylinux wheels for cffi/pydantic-core rather than the sdists it picked -- see
+  # this repo's report for why: both have wheels for org.gnome.Platform 50's Python (3.13), so
+  # building them from source and pulling in the Rust SDK extension is unnecessary here).
+  - pip-lios-linux.json
+
+  # hatchling: the build backend both lios-protocol and lios-linux declare in pyproject.toml.
+  # Needed explicitly because --no-build-isolation (used everywhere here, to stay offline)
+  # means a build backend must already be importable rather than fetched on demand.
+  - pip-hatchling.json
+
+  - name: lios-protocol
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --no-index --no-deps --prefix=${FLATPAK_DEST} .
+    sources:
+      - type: dir
+        path: ../../protocol
+        skip: [".venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", "__pycache__"]
+
+  - name: lios-linux
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --no-index --no-deps --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/io.github.frederikb96.Lios.desktop
+        ${FLATPAK_DEST}/share/applications/io.github.frederikb96.Lios.desktop
+      - install -Dm644 packaging/io.github.frederikb96.Lios.metainfo.xml
+        ${FLATPAK_DEST}/share/metainfo/io.github.frederikb96.Lios.metainfo.xml
+      - install -Dm644 packaging/io.github.frederikb96.Lios.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.frederikb96.Lios.svg
+    sources:
+      - type: dir
+        path: ..
+        skip: [".venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", "__pycache__", "build"]

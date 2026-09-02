@@ -39,3 +39,6 @@ DerivedData/
 xcuserdata/
 *.ipa
 *.dSYM.zip
+
+# Flatpak
+.flatpak-builder/
