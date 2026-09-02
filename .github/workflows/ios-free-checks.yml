@@ -1,0 +1,83 @@
+# and the Linux client, and gated on ios/** so a relay-only push does not spend a run here.
+name: iOS free checks
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**"]
+  pull_request:
+    paths: ["ios/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Swift's own documented Ubuntu dependency list, plus curl/file/ca-certificates for the
+      # setup action itself.
+      - name: Install Swift toolchain dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils ca-certificates curl file gnupg2 libc6-dev libcurl4-openssl-dev libedit2 \
+            libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
+            libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
+
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2'
+
+      - uses: actions/cache@v4
+        with:
+          path: ios/LIOSKit/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('ios/LIOSKit/Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build and test the package
+        run: |
+          set -o pipefail
+          swift build --package-path ios/LIOSKit --build-tests 2>&1 | tee /tmp/build.log
+          swift test --package-path ios/LIOSKit --skip-build
+
+      # The only check that reaches the app target, the share extension and the notification
+      # service extension — none of which Linux compiles at all.
+      - name: Syntax-check what Linux cannot compile
+        run: ./ios/Tooling/parse-swift.sh
+
+      - name: Scan for Swift 6 shapes only a Mac would reject
+        run: ./ios/Tooling/swift6-lint.py
+
+      - name: Format
+        run: |
+          swift format lint --recursive --strict --configuration ios/.swift-format \
+            ios/LIOS ios/LIOSShare ios/LIOSNotify ios/LIOSKit/Sources ios/LIOSKit/Tests
+
+      - name: Surface compiler errors
+        if: failure()
+        run: |
+          grep -E "error:" /tmp/build.log | head -40 || echo "no compiler errors in the log"
+
+      - name: Publish the formatting correction as a patch
+        if: failure()
+        run: |
+          swift format --in-place --recursive --configuration ios/.swift-format \
+            ios/LIOS ios/LIOSShare ios/LIOSNotify ios/LIOSKit/Sources ios/LIOSKit/Tests
+          git diff > format.patch
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-format-patch
+          path: format.patch
+          retention-days: 5
