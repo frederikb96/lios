@@ -22,11 +22,20 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
 
     private let session = AVCaptureSession()
     private var hasDelivered = false
+    private var previewLayer: AVCaptureVideoPreviewLayer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         configureSession()
+    }
+
+    // `CALayer.autoresizingMask` is AppKit-only and unavailable on iOS — a sublayer added
+    // directly (rather than through a `UIView`) does not participate in Auto Layout or UIKit's
+    // own autoresizing at all, so keeping its frame in sync is this method's job.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -63,8 +72,8 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
         let preview = AVCaptureVideoPreviewLayer(session: session)
         preview.videoGravity = .resizeAspectFill
         preview.frame = view.bounds
-        preview.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         view.layer.addSublayer(preview)
+        previewLayer = preview
     }
 
     // `AVCaptureMetadataOutputObjectsDelegate`'s requirement is nonisolated in the SDK, and this
