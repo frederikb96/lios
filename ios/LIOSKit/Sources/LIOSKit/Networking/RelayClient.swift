@@ -32,7 +32,6 @@ public final class RelayClient: Sendable {
     /// base64 blow-up on an image or a video).
     private enum Header {
         static let itemId = "X-Item-Id"
-        static let targetDeviceId = "X-Target-Device-Id"
         static let sealedPreview = "X-Sealed-Preview"
     }
 
@@ -110,20 +109,24 @@ public final class RelayClient: Sendable {
     /// `POST /api/items` — upload one sealed item. The body is the raw sealed blob
     /// (`application/octet-stream`), never base64-embedded in JSON, so an image or a video costs
     /// no encoding overhead on top of AES-GCM's fixed 28 bytes. `targetDeviceId` narrows delivery
-    /// to one device; omitted, the item broadcasts to every other paired device.
+    /// to one device via the `target_device_id` query parameter; omitted, the item broadcasts to
+    /// every other paired device.
     public func createItem(_ sealed: LiosItem.Sealed, targetDeviceId: UUID?, sealedPreview: Data?) async throws
         -> ItemCreated
     {
-        var request = authenticatedRequest(url: Endpoint.items(base: baseURL))
+        var components = URLComponents(url: Endpoint.items(base: baseURL), resolvingAgainstBaseURL: false)!
+        if let targetDeviceId {
+            components.queryItems = [
+                URLQueryItem(name: "target_device_id", value: targetDeviceId.uuidString.lowercased())
+            ]
+        }
+        var request = authenticatedRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         // Lowercased for consistency with the associated data `LiosItem.seal` authenticated
         // under this same id (Python renders a UUID lowercase) — the relay itself parses either
         // case, but a mismatched case in its own logs is one more thing to explain later.
         request.setValue(sealed.id.uuidString.lowercased(), forHTTPHeaderField: Header.itemId)
-        if let targetDeviceId {
-            request.setValue(targetDeviceId.uuidString.lowercased(), forHTTPHeaderField: Header.targetDeviceId)
-        }
         if let sealedPreview, !sealedPreview.isEmpty {
             request.setValue(sealedPreview.base64EncodedString(), forHTTPHeaderField: Header.sealedPreview)
         }
