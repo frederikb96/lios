@@ -261,19 +261,26 @@ class LiosApplication(Adw.Application):
             logger.warning("cannot send: this device has not paired yet")
             return
         item_id = str(uuid.uuid4())
-        associated_data = item_id.encode("ascii")
         sealed = item_codec.build_sealed_item(
             group_key=group_key,
             kind=kind,
             payload=payload,
+            item_id=item_id,
             filename=filename,
             content_type=content_type,
-            associated_data=associated_data,
         )
         preview = _preview_for(kind, payload, filename=filename)
-        sealed_preview = item_codec.build_sealed_item(
-            group_key=group_key, kind=kind, payload=preview.encode("utf-8"),
-            associated_data=associated_data,
+        wire_preview_text = (
+            item_codec.truncate_preview_text(payload.decode("utf-8", errors="replace"))
+            if kind == "text"
+            else None
+        )
+        sealed_preview = item_codec.build_sealed_preview(
+            group_key=group_key,
+            item_id=item_id,
+            kind=kind,
+            preview=wire_preview_text,
+            filename=filename,
         )
         try:
             rest.create_item(
@@ -281,7 +288,7 @@ class LiosApplication(Adw.Application):
                 relay_url=self.config.relay_url,
                 device_token=device_token,
                 item_id=item_id,
-                sealed_blob=sealed,
+                sealed_blob=sealed.blob,
                 sealed_preview=sealed_preview,
             )
         except rest.RelayError as exc:
@@ -320,7 +327,8 @@ class LiosApplication(Adw.Application):
             decoded = item_codec.open_sealed_item(
                 group_key=group_key,
                 sealed_blob=sealed,
-                associated_data=str(item.id).encode("ascii"),
+                item_id=str(item.id),
+                size_bytes=item.size_bytes,
             )
         except Exception:
             logger.exception("failed to fetch/decrypt item %s", item.id)
