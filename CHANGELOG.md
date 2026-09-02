@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-02
+
 ### Added
 
 - `lios-protocol`: shared AES-256-GCM sealing, metadata/payload framing, QR-based device
