@@ -36,7 +36,7 @@ from lios_linux.relaylink.rest import RelayError  # noqa: E402
 from lios_linux.ui.history_row import HistoryRow  # noqa: E402
 from lios_linux.ui.keyring_unavailable_view import KeyringUnavailableView  # noqa: E402
 from lios_linux.ui.onboarding import OnboardingView  # noqa: E402
-from lios_linux.ui.pairing_view import QrCodeWidget  # noqa: E402
+from lios_linux.ui.pairing_view import PairingInviteView  # noqa: E402
 from lios_linux.ui.preferences import LiosPreferencesDialog  # noqa: E402
 
 if TYPE_CHECKING:
@@ -320,8 +320,8 @@ class LiosWindow(Adw.ApplicationWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_pairing_dialog(self, uri: str) -> bool:
-        dialog = Adw.Dialog(title="Scan with the LIOS iOS app")
-        dialog.set_child(QrCodeWidget(uri))
+        dialog = Adw.Dialog(title="Pair a new device")
+        dialog.set_child(PairingInviteView(uri))
         dialog.present(self)
         return bool(GLib.SOURCE_REMOVE)
 

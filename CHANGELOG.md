@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The Linux client's pairing dialog shows the pairing link as selectable text with a copy
+  button next to the QR code, alongside a warning that anyone who reads that text or the
+  clipboard history it lands in can read everything sent as this device until the whole fleet
+  is re-paired -- the key it carries never expires and cannot be rotated.
+- The iOS invite sheet shows the same pairing link as selectable text with a copy button next
+  to the QR code, for a device with no camera to scan it, with the same warning about what the
+  text exposes. The join screen now also accepts a pasted link, feeding the same redeem path
+  scanning already uses.
+
 ### Fixed
 
 - The Linux client's window froze for as long as the relay's catch-up list took to arrive on
