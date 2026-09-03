@@ -2,9 +2,7 @@
 
 A Nautilus file copy puts `text/plain` on the clipboard holding the file's path -- a
 first-match handler would silently send that string instead of the file. These cases are
-taken directly from the clipboard types Freddy observed on his own laptop after a Nautilus
-Ctrl+C (spec row 55) and from the priority table settled in the clipboard investigation
-(spec row 66, report 5b69b919-ed12-4092-8de0-1237b5c8b143 section 6/8).
+taken directly from the clipboard types a real GNOME desktop offers after a Nautilus Ctrl+C.
 """
 
 from __future__ import annotations
@@ -13,7 +11,7 @@ from lios_linux.clipboard.priority import ClipboardChoice, ClipboardKind, choose
 
 
 def test_nautilus_file_copy_picks_file_transfer_not_the_path_string() -> None:
-    """The exact five types Freddy's laptop offered after Ctrl+C on a file in Nautilus."""
+    """The exact five types a real GNOME desktop offers after Ctrl+C on a file in Nautilus."""
     available = [
         "application/vnd.portal.files",
         "application/vnd.portal.filetransfer",

@@ -1,29 +1,45 @@
 # lios-linux
 
-The Linux half of LIOS: a resident GTK4 + libadwaita application (PyGObject) that holds a
-WebSocket to the relay, raises a desktop notification when something arrives from a paired
-phone, and sends the clipboard (or a file, or typed text) the other way. Shipped as a Flatpak.
+The Linux half of LIOS: a resident GTK4 + libadwaita application (PyGObject) with one window,
+holding a WebSocket to the relay and running under GNOME's Background Apps with no window
+open. Sending is a paste into that window; receiving is a notification whose click opens the
+window with the new item selected, ready to copy or save. Shipped as a Flatpak.
 
 ## Clipboard
 
 GNOME implements no clipboard protocol usable by a background or sandboxed client
 (`wlr-data-control` and `ext-data-control` are refused by mutter; the Clipboard portal only
-extends RemoteDesktop/InputCapture sessions). This app instead spawns `wl-copy`/`wl-paste` --
-which work by briefly presenting a transparent surface and taking focus with a fresh input
-serial -- for every clipboard read and write. A resident GTK app's own `Gdk.Clipboard` can
-write natively only from a genuine in-window button click, which has a fresh serial of its
-own; it cannot do so from a global-shortcut or notification trigger, because GNOME's focus and
-serial checks are satisfied only by that fresh input event, and an activation token buys focus
-but not a serial. See `src/lios_linux/clipboard/` for the split.
+extends RemoteDesktop/InputCapture sessions). A resident GTK app's own `Gdk.Clipboard` writes
+natively only from a genuine in-window input event -- mutter requires both keyboard focus and
+a `wl_display` serial newer than the current owner's, and GDK sources that serial only from a
+key/button press the application itself received. So every clipboard touch here happens inside
+this window, in response to an input event the app received: Ctrl+V to send, a Copy button (or
+its accelerator) to receive. See `src/lios_linux/clipboard/` for the mechanism, and
+`src/lios_linux/clipboard/priority.py` for the ordered mime-type priority that decides what a
+paste or a drop actually is.
 
-Every clipboard touch briefly steals focus. This app only ever touches the clipboard on an
-explicit user action -- a shortcut press, a notification click, a button -- never on a timer or
-in a loop, and there is no clipboard-change monitoring: `wl-paste --watch` refuses to run on
-GNOME at all.
+There is no clipboard-change monitoring, and never will be on GNOME: `wl-paste --watch`
+refuses to run at all, since it needs a data-control protocol mutter does not implement.
+Sending is always a deliberate act -- a paste, a drop, typed text, a chosen file -- never a
+background mirror.
 
 The clipboard is owned by whichever process last set it; if this app exits (or is replaced as
 owner by something else) before a paste, the content is gone. Normal Wayland behaviour, not a
 bug.
+
+## Staying resident
+
+`self.hold()` at startup keeps the process running once its last window closes -- otherwise a
+`Gtk.Application` quits the moment its window count reaches zero. Closing the window hides
+it rather than destroying it, so reopening (via a notification click or the bound shortcut) is
+instant and its scroll position and selection survive. A running, windowless, sandboxed app is
+what GNOME lists under Background Apps in its system menu, with a quit button that needs no
+code here to work.
+
+There is no global shortcut portal call anywhere in this app. `lios show` is the one
+command-line entry point, forwarded to the running instance over D-Bus by
+`Gio.Application`'s command-line handling -- any desktop's own keyboard settings can bind it
+directly, with no portal, no consent dialog, and no dependency on a GNOME version that has one.
 
 ## Development
 
@@ -43,10 +59,8 @@ not from PyPI.
 ## Packaging
 
 `packaging/io.github.frederikb96.Lios.yml` is the Flatpak manifest, building against
-`org.gnome.Platform` and bundling `wl-clipboard` from source. `wl-clipboard` is
-GPL-3.0-or-later and is called as a subprocess -- aggregation, not linking, so this
-application stays MIT. The manifest builds wl-clipboard from source, which satisfies the
-source-offer obligation.
+`org.gnome.Platform` plus this app's own Python dependencies -- no other binary, so the
+whole bundle stays MIT.
 
 ```
 flatpak-builder --user --install --force-clean build packaging/io.github.frederikb96.Lios.yml
@@ -81,14 +95,15 @@ holds a `.widget` rather than inheriting from `Adw.StatusPage`).
 
 ## Layout
 
-- `clipboard/` -- `wl-copy`/`wl-paste` and native `Gdk.Clipboard`, and the ordered mime-type
-  priority that decides which to read.
+- `clipboard/` -- native `Gdk.Clipboard` writes, and the ordered mime-type priority that
+  decides what a paste or a drop actually is.
 - `history/` -- SQLite metadata plus a sibling blob directory, with explicit retention.
 - `relaylink/` -- the relay connection: REST calls, the `/api/stream` WebSocket with
   reconnect/backoff, pairing, and the item envelope (framing + encryption, via
   `lios-protocol`).
-- `portals/` -- Background (autostart), GlobalShortcuts, and Notification.
+- `portals/` -- Background (autostart) and Notification.
 - `keyring.py` -- the device token and group key, via the Secret Service.
-- `ui/` -- the window, preferences, pairing view, and history rows.
+- `ui/` -- the window (paste-to-send, drag-and-drop, the history list with its Copy/Save
+  actions), preferences, pairing view, and history rows.
 - `cli.py` / `app.py` -- the command-line grammar and the `Gtk.Application` that ties
-  everything together.
+  everything together, held resident from startup.

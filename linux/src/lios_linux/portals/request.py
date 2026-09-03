@@ -50,7 +50,10 @@ def call_request_method(
     (0 succeeded, 1 the user cancelled, 2 another error) and the results dict.
     """
     token = _new_handle_token()
-    sender = connection.get_unique_name().lstrip(":").replace(".", "_")
+    unique_name = connection.get_unique_name()
+    if unique_name is None:
+        raise RuntimeError("connection has no unique name -- not a message-bus connection")
+    sender = unique_name.lstrip(":").replace(".", "_")
     request_path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
 
     subscription_ids: list[int] = []

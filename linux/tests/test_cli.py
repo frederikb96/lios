@@ -1,25 +1,11 @@
-"""Command-line grammar -- the exported CLI fallback for desktops with no GlobalShortcuts
-portal (spec row 66)."""
+"""Command-line grammar -- `lios show`, the one entry point any desktop's own keybinding
+settings can bind."""
 
 from __future__ import annotations
 
 import pytest
 
-from lios_linux.cli import Pair, SendClipboard, SendFile, ShowWindow, parse
-
-
-def test_send_clipboard() -> None:
-    assert parse(["send-clipboard"]) == SendClipboard()
-
-
-def test_send_file_with_a_path() -> None:
-    assert parse(["send-file", "/home/frederik/photo.png"]) == SendFile(
-        path="/home/frederik/photo.png"
-    )
-
-
-def test_send_file_with_no_path_opens_a_chooser() -> None:
-    assert parse(["send-file"]) == SendFile(path=None)
+from lios_linux.cli import Pair, ShowWindow, parse
 
 
 def test_pair_with_a_uri() -> None:

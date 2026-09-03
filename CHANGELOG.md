@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `lios-linux` is now a resident application with no separate helper process: it stays
+  running under GNOME's Background Apps with no window open, and closing its window hides it
+  rather than exiting. Sending is a paste into the window (text, an image, or a file, from
+  whatever the clipboard or a drop offers); receiving is a notification whose click opens the
+  window with the new item selected, ready to copy or save with a button or its accelerator.
+- Removed the `wl-copy`/`wl-paste` clipboard backend, the subprocess plumbing under it, and
+  the GlobalShortcuts portal registration -- every clipboard touch now goes through native
+  `Gdk.Clipboard` from inside a focused window, so the Flatpak bundles no GPL binary.
+- `lios send-clipboard` and `lios send-file` are gone; `lios show` (or no subcommand) is the
+  one command-line entry point any desktop's own keyboard settings can bind.
+
+### Fixed
+
+- The Linux client's relay stream handler converted every incoming WebSocket frame with
+  `bytes(...)` on a `GLib.Bytes` object, which always raised -- nothing sent from the phone
+  ever reached the laptop, and the failure repeated on every keepalive too.
+
 ## [0.1.1] - 2026-09-02
 
 ### Fixed

@@ -3,7 +3,7 @@
 Two independent limits, both enforced by :meth:`HistoryStore.expire`: an item older than
 `max_age_days` is gone regardless of how few items exist; the newest `max_items` survive
 regardless of age. An item dismissed without saving is still findable until either limit
-catches it (spec row 57) -- there is no other way for an item to disappear.
+catches it -- there is no other way for an item to disappear.
 
 Nothing is unlinked lazily. `expire` is the only place a blob file is deleted, and it always
 deletes the blob together with the row that referenced it -- never one without the other. It

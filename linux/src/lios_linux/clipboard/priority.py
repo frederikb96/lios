@@ -1,13 +1,15 @@
 """Ordered mime-type priority for reading the clipboard.
 
-Pure and display-free: takes whatever `wl-paste --list-types` reported and decides what to do,
-with no Wayland connection or GTK import involved. Ordered rather than first-match, because a
-Nautilus file copy also puts the file's path on the clipboard as `text/plain` -- a naive "is
-there text? send it" handler would silently send that string instead of the file.
+Pure and display-free: takes whatever mime types the clipboard currently offers -- from
+`Gdk.Clipboard.get_formats()` on a paste, or a drop's own content formats -- and decides what
+to do, with no Wayland connection or GTK import involved here. Ordered rather than
+first-match, because a Nautilus file copy also puts the file's path on the clipboard as
+`text/plain` -- a naive "is there text? send it" handler would silently send that string
+instead of the file.
 
-Priority, high to low (spec row 66; report 5b69b919-ed12-4092-8de0-1237b5c8b143 section 6/8):
-image/png, then any other image/* -- application/vnd.portal.filetransfer, then the legacy
-application/vnd.portal.files -- text/uri-list -- text/plain;charset=utf-8, then bare text/plain.
+Priority, high to low: image/png, then any other image/* -- application/vnd.portal.filetransfer,
+then the legacy application/vnd.portal.files -- text/uri-list -- text/plain;charset=utf-8, then
+bare text/plain.
 """
 
 from __future__ import annotations

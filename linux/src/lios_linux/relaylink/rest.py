@@ -40,6 +40,8 @@ class RelayError(RuntimeError):
 
 def _message(method: str, url: str, *, headers: dict[str, str], body: bytes | None) -> Soup.Message:
     message = Soup.Message.new(method, url)
+    if message is None:
+        raise RelayError(f"{method} {url}: malformed URL")
     for key, value in headers.items():
         message.get_request_headers().append(key, value)
     if body is not None:
@@ -56,12 +58,13 @@ def _send(session: Soup.Session, message: Soup.Message) -> bytes:
     except GLib.Error as exc:
         raise RelayError(f"{message.get_method()} {message.get_uri().to_string()}: {exc}") from exc
     status = message.get_status()
+    data = (body.get_data() or b"") if body else b""
     if status >= 300:
-        detail = body.get_data().decode("utf-8", errors="replace") if body else ""
+        detail = data.decode("utf-8", errors="replace")
         raise RelayError(
             f"{message.get_method()} {message.get_uri().to_string()} -> {status}: {detail[:200]}"
         )
-    return body.get_data() if body else b""
+    return data
 
 
 def bootstrap_first_device(

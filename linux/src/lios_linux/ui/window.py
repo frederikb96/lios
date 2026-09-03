@@ -1,10 +1,11 @@
-"""The LIOS window: onboarding, history, drag-and-drop, typed text, preferences, and pairing.
+"""The LIOS window: onboarding, history, drag-and-drop, paste-to-send, and receiving.
 
-Created on demand by `app.py`'s `_show_window` and destroyed on close, so the resident
-footprint falls back to the headless baseline between uses. The one place this application
-uses native `Gdk.Clipboard` at all is implicit here: none of it -- drag-and-drop and the text
-entry are GTK's own input paths, not a clipboard read, so they carry no serial problem in the
-first place (see `lios_linux.clipboard` for where the real distinction is).
+Created once by `app.py`'s `show_window` and hidden (never destroyed) on close, so the
+resident footprint stays low between uses while reopening is instant and keeps its state (spec
+row 85). Every clipboard touch in this file happens inside this window while it has focus, in
+response to an input event the app itself received -- a paste, a click, an accelerator -- which
+is exactly what satisfies mutter's clipboard gate with no helper process (see
+`lios_linux.clipboard`).
 
 Untestable in this environment: needs a live display connection.
 """
@@ -13,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import gi
 
@@ -27,13 +28,18 @@ gi.require_version("GObject", "2.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 from lios_linux import keyring  # noqa: E402
+from lios_linux.clipboard.priority import ClipboardKind, choose_read_type  # noqa: E402
 from lios_linux.history.store import HistoryStore  # noqa: E402
+from lios_linux.portals import notifications  # noqa: E402
 from lios_linux.relaylink import pairing_flow  # noqa: E402
 from lios_linux.relaylink.rest import RelayError  # noqa: E402
 from lios_linux.ui.history_row import HistoryRow  # noqa: E402
 from lios_linux.ui.onboarding import OnboardingView  # noqa: E402
 from lios_linux.ui.pairing_view import QrCodeWidget  # noqa: E402
 from lios_linux.ui.preferences import LiosPreferencesDialog  # noqa: E402
+
+if TYPE_CHECKING:
+    from lios_linux.app import LiosApplication
 
 logger = logging.getLogger(__name__)
 
@@ -68,21 +74,38 @@ class LiosWindow(Adw.ApplicationWindow):
         scrolled = Gtk.ScrolledWindow(vexpand=True, child=self._list_box)
 
         self._entry = Gtk.Entry(
-            placeholder_text="Type something to send...",
+            placeholder_text="Type something to send...", hexpand=True
+        )
+        self._entry.connect("activate", self._on_entry_activate)
+
+        file_picker_button = Gtk.Button(
+            icon_name="document-open-symbolic", valign=Gtk.Align.CENTER
+        )
+        file_picker_button.set_tooltip_text("Choose a file to send")
+        file_picker_button.connect("clicked", self._on_choose_file_clicked)
+
+        send_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=6,
             margin_start=12,
             margin_end=12,
             margin_bottom=12,
             margin_top=6,
         )
-        self._entry.connect("activate", self._on_entry_activate)
+        send_row.append(self._entry)
+        send_row.append(file_picker_button)
 
         self._history_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._history_content.append(scrolled)
-        self._history_content.append(self._entry)
+        self._history_content.append(send_row)
 
         self._install_drop_target()
+        self._install_key_controller()
         self._install_actions()
         self.refresh()
+
+    def _app(self) -> "LiosApplication":
+        return cast("LiosApplication", self.get_application())
 
     def refresh(self) -> None:
         """Show onboarding or the history list, whichever now applies, and reload either way.
@@ -97,7 +120,7 @@ class LiosWindow(Adw.ApplicationWindow):
             self._toolbar_view.set_content(onboarding.widget)
 
     def _on_paired(self, *, show_qr: bool) -> None:
-        self.get_application().on_paired()
+        self._app().on_paired()
         self.refresh()
         if show_qr:
             self._generate_and_show_pairing_qr()
@@ -111,14 +134,109 @@ class LiosWindow(Adw.ApplicationWindow):
         pair_action.connect("activate", self._on_pair_action)
         self.add_action(pair_action)
 
+    # -- Receiving: keyboard accelerators for the selected history row ------------------------
+
+    def _install_key_controller(self) -> None:
+        """Capture phase, so Ctrl+V is seen here before the focused child (the text entry)
+        would otherwise consume it as an ordinary text paste."""
+        controller = Gtk.EventControllerKey()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        controller.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(controller)
+
+    def _on_key_pressed(
+        self, _controller: Gtk.EventControllerKey, keyval: int, _keycode: int, state: Any
+    ) -> bool:
+        if not bool(state & Gdk.ModifierType.CONTROL_MASK):
+            return False
+        if keyval in (Gdk.KEY_v, Gdk.KEY_V):
+            self._paste_and_send()
+            return True
+        if self.get_focus() is self._entry:
+            return False  # never steal Ctrl+C/Ctrl+S from ordinary text editing
+        if keyval in (Gdk.KEY_c, Gdk.KEY_C):
+            return self._activate_selected_item(notifications.ACTION_COPY_ITEM)
+        if keyval in (Gdk.KEY_s, Gdk.KEY_S):
+            return self._activate_selected_item(notifications.ACTION_SAVE_ITEM)
+        return False
+
+    def _activate_selected_item(self, action_name: str) -> bool:
+        """The button-click equivalent for the currently selected row -- confirmed correct
+        from GDK's source for a button click; a keyboard accelerator carries its own fresh
+        press serial and should behave identically, but that is unverified on hardware."""
+        selected = self._list_box.get_selected_row()
+        if selected is None:
+            return False
+        row = cast(HistoryRow, selected)  # the list box holds nothing else
+        if action_name == notifications.ACTION_COPY_ITEM and not row.supports_copy:
+            return False
+        if action_name == notifications.ACTION_SAVE_ITEM and not row.supports_save:
+            return False
+        self._app().activate_action(
+            action_name.removeprefix("app."), GLib.Variant("s", row.item_id)
+        )
+        return True
+
+    # -- Sending: drag-and-drop, paste, typed text, and a file picker -------------------------
+
     def _install_drop_target(self) -> None:
-        drop_target = Gtk.DropTarget.new(GObject.TYPE_NONE, Gdk.DragAction.COPY)
-        drop_target.set_gtypes([Gdk.FileList, Gdk.Texture, GObject.TYPE_STRING])
+        # PyGObject-stubs types both calls' GType arguments as `type[Any]`; a GType constant
+        # is the correct argument per the real GTK API (`gtk_drop_target_new`/`_set_gtypes`).
+        drop_target = Gtk.DropTarget.new(GObject.TYPE_NONE, Gdk.DragAction.COPY)  # type: ignore[arg-type]
+        drop_target.set_gtypes([Gdk.FileList, Gdk.Texture, GObject.TYPE_STRING])  # type: ignore[list-item]
         drop_target.connect("drop", self._on_drop)
         self.add_controller(drop_target)
 
     def _on_drop(self, _target: Gtk.DropTarget, value: Any, _x: float, _y: float) -> bool:
-        app = self.get_application()
+        return self._send_value(value)
+
+    def _paste_and_send(self) -> None:
+        """Ctrl+V anywhere in the window: ask the clipboard what it offers, pick the richest
+        useful form by the same ordered priority drag-and-drop already uses, and read it."""
+        clipboard = self.get_display().get_clipboard()
+        mime_types = list(clipboard.get_formats().get_mime_types() or [])
+        choice = choose_read_type(mime_types)
+        if choice is None:
+            return
+        if choice.kind == ClipboardKind.IMAGE:
+            clipboard.read_texture_async(None, self._on_paste_texture)
+        elif choice.kind in (ClipboardKind.FILE_TRANSFER, ClipboardKind.URI_LIST):
+            clipboard.read_value_async(
+                Gdk.FileList, GLib.PRIORITY_DEFAULT, None, self._on_paste_file_list
+            )
+        else:
+            clipboard.read_text_async(None, self._on_paste_text)
+
+    def _on_paste_texture(self, clipboard: Gdk.Clipboard, result: Gio.AsyncResult) -> None:
+        try:
+            texture = clipboard.read_texture_finish(result)
+        except GLib.Error:
+            logger.warning("paste: could not read an image from the clipboard")
+            return
+        if texture is not None:
+            self._send_value(texture)
+
+    def _on_paste_file_list(self, clipboard: Gdk.Clipboard, result: Gio.AsyncResult) -> None:
+        try:
+            value = clipboard.read_value_finish(result)
+        except GLib.Error:
+            logger.warning("paste: could not read files from the clipboard")
+            return
+        self._send_value(value)
+
+    def _on_paste_text(self, clipboard: Gdk.Clipboard, result: Gio.AsyncResult) -> None:
+        try:
+            text = clipboard.read_text_finish(result)
+        except GLib.Error:
+            logger.warning("paste: could not read text from the clipboard")
+            return
+        if text:
+            self._send_value(text)
+
+    def _send_value(self, value: Any) -> bool:
+        """Shared by drag-and-drop and paste -- both ultimately hand this the same three GTK
+        content shapes, whichever path they arrived by."""
+        app = self._app()
         if isinstance(value, Gdk.FileList):
             for file in value.get_files():
                 path = file.get_path()
@@ -126,7 +244,8 @@ class LiosWindow(Adw.ApplicationWindow):
                     app.send_file(path)
             return True
         if isinstance(value, Gdk.Texture):
-            app.upload("image", value.save_to_png_bytes().get_data(), content_type="image/png")
+            png_bytes = value.save_to_png_bytes().get_data() or b""
+            app.upload("image", png_bytes, content_type="image/png")
             return True
         if isinstance(value, str):
             app.upload("text", value.encode("utf-8"))
@@ -137,8 +256,22 @@ class LiosWindow(Adw.ApplicationWindow):
         text = entry.get_text()
         if not text:
             return
-        self.get_application().upload("text", text.encode("utf-8"))
+        self._app().upload("text", text.encode("utf-8"))
         entry.set_text("")
+
+    def _on_choose_file_clicked(self, _button: Gtk.Button) -> None:
+        Gtk.FileDialog().open(self, None, self._on_file_chosen)
+
+    def _on_file_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        try:
+            file = dialog.open_finish(result)
+        except GLib.Error:
+            return  # cancelled, or the dialog failed -- either way, nothing to send
+        path = file.get_path() if file is not None else None
+        if path:
+            self._app().send_file(path)
+
+    # -- Preferences / pairing menu ------------------------------------------------------------
 
     def _on_preferences(self, _action: Gio.SimpleAction, _param: None) -> None:
         LiosPreferencesDialog(app=self.get_application()).present(self)
@@ -147,7 +280,7 @@ class LiosWindow(Adw.ApplicationWindow):
         self._generate_and_show_pairing_qr()
 
     def _generate_and_show_pairing_qr(self) -> None:
-        app = self.get_application()
+        app = self._app()
 
         def worker() -> None:
             try:
@@ -167,6 +300,8 @@ class LiosWindow(Adw.ApplicationWindow):
         dialog.present(self)
         return bool(GLib.SOURCE_REMOVE)
 
+    # -- History list, and being made "ready" from the outside --------------------------------
+
     def _reload_history(self) -> None:
         while (child := self._list_box.get_first_child()) is not None:
             self._list_box.remove(child)
@@ -183,3 +318,15 @@ class LiosWindow(Adw.ApplicationWindow):
         row = self._rows.get(item_id)
         if row is not None:
             self._list_box.select_row(row)
+
+    def focus_send_and_select_newest(self) -> None:
+        """Ready the instant the window appears, whether raised by a shortcut or a
+        notification with no particular item: the send field has focus, and the newest
+        received item is selected, so shortcut-then-copy is a complete receive with no
+        mouse."""
+        if not keyring.is_paired():
+            return
+        self._entry.grab_focus()
+        newest_row = self._list_box.get_row_at_index(0)
+        if newest_row is not None:
+            self._list_box.select_row(newest_row)

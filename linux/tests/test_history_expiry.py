@@ -1,4 +1,4 @@
-"""History retention: last 50 items, 7 days, nothing left behind (spec row 57).
+"""History retention: last 50 items, 7 days, nothing left behind.
 
 An item dismissed without saving must still be findable for the retention window, and gone
 without a trace -- including its blob file -- once it ages out or falls past the item cap.

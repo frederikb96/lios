@@ -7,11 +7,13 @@ any disconnect -- server-initiated or not, never a reason to stop trying.
 
 🚨 Unverified against a live relay or a real `Soup.Session`: `websocket_connect_async`'s exact
 PyGObject argument order (message, origin, protocols, io_priority, cancellable, callback) is
-written from the libsoup3 C API and could not be exercised here -- there is no relay running
-and no network access from `pai-vm` into one. Confirm against a real connection before
+written from the libsoup3 C API and could not be exercised in this headless environment, with
+no relay running and no network access into one. Confirm against a real connection before
 shipping.
 
-Untestable in this environment without a running relay to connect to.
+Untestable end to end in this environment without a running relay to connect to. `_on_message`
+itself is an exception -- it needs only a real `GLib.Bytes` and `Soup.WebsocketDataType`, no
+socket at all, and is unit-tested directly against those.
 """
 
 from __future__ import annotations
@@ -76,6 +78,10 @@ class StreamConnection:
             return
         connect_time = datetime.now(UTC)
         message = Soup.Message.new("GET", endpoints.stream_url(self._relay_url))
+        if message is None:
+            logger.warning("relay stream: malformed URL %s", self._relay_url)
+            self._schedule_reconnect()
+            return
         message.get_request_headers().append(
             "Authorization", endpoints.auth_header(self._device_token)["Authorization"]
         )
@@ -125,7 +131,7 @@ class StreamConnection:
     ) -> None:
         if message_type != Soup.WebsocketDataType.TEXT:
             return
-        payload = bytes(message).decode("utf-8")
+        payload = message.get_data().decode("utf-8")
         if '"type":"ping"' in payload:
             return
         event = StreamEvent.model_validate_json(payload)
