@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Autostart and D-Bus service activation used to invoke the app with no arguments, which meant
   "show the window" -- so granting autostart permission popped a window at every login. Both
   now invoke the new, windowless `lios background` instead.
+- Catching up on an item sent while this device was offline never worked across a restart:
+  the relay stream's catch-up window was captured fresh at connect time and never persisted,
+  so every process start began from "now" and anything sent before that was lost the moment
+  the relay's 7-day retention caught up with it. The watermark now survives in local history
+  and resumes from wherever this device last left off.
 
 ## [0.1.1] - 2026-09-02
 

@@ -179,8 +179,16 @@ class LiosApplication(Adw.Application):
             device_token=device_token,
             session=self.soup_session,
             on_item=self._on_item_announced,
+            get_catch_up_since=self._catch_up_since,
         )
         self._stream.start()
+
+    def _catch_up_since(self) -> datetime:
+        """The watermark the next catch-up resumes from: the newest relay timestamp among
+        items this device has already received, or "now" if it has never received anything
+        -- a fresh pairing should not retroactively pull the fleet's whole retained history,
+        only whatever arrives from here on."""
+        return self._history.get_catch_up_since() or _now()
 
     def _request_autostart_if_not_yet_asked(self) -> None:
         """Ask, once, for permission to start at login -- never enabled silently."""
@@ -283,7 +291,18 @@ class LiosApplication(Adw.Application):
     # -- Receiving ----------------------------------------------------------------------------
 
     def _on_item_announced(self, item: ItemSummary) -> None:
-        """Called from `StreamConnection`, already on the main loop -- fetch off a worker."""
+        """Called from `StreamConnection`, already on the main loop -- fetch off a worker.
+
+        Skips outright if `item.id` is already in local history: the live stream and a
+        catch-up can genuinely announce the same item twice in one reconnect (a catch-up
+        spanning the moment the socket opens can list something the stream is about to
+        announce anyway), and a widened catch-up window can also echo back an item this
+        very device sent, since the relay's catch-up list carries no per-device filtering at
+        all. Either way it is already handled -- checked here, on the main loop, rather than
+        in the worker below, matching the rule that only the main loop touches history state.
+        """
+        if self._history.get(str(item.id)) is not None:
+            return
         threading.Thread(target=self._fetch_and_decode, args=(item,), daemon=True).start()
 
     def _fetch_and_decode(self, item: ItemSummary) -> None:
@@ -305,9 +324,20 @@ class LiosApplication(Adw.Application):
         except Exception:
             logger.exception("failed to fetch/decrypt item %s", item.id)
             return
-        GLib.idle_add(self._on_item_decoded, str(item.id), decoded)
+        GLib.idle_add(self._on_item_decoded, str(item.id), item.created_at, decoded)
 
-    def _on_item_decoded(self, item_id: str, decoded: DecodedItem) -> bool:
+    def _on_item_decoded(
+        self, item_id: str, relay_created_at: datetime, decoded: DecodedItem
+    ) -> bool:
+        """Store the item and notify -- and advance the catch-up watermark regardless of
+        whether this call turns out to be a duplicate (`_on_item_announced`'s guard is not
+        airtight on its own: two fetches for the same id can both be in flight on their
+        worker threads before either reaches here). Advancing is always correct even then,
+        since it only ever moves forward to a timestamp this device has genuinely now seen.
+        """
+        self._history.advance_catch_up_since(relay_created_at)
+        if self._history.get(item_id) is not None:
+            return bool(GLib.SOURCE_REMOVE)
         self._history.add(
             HistoryItem(
                 id=item_id,

@@ -49,6 +49,30 @@ dependency on a GNOME version that has one. `lios background` is the internal co
 D-Bus service file and the autostart command registered with the Background portal both use
 it, so bringing the app up at login or via D-Bus activation never draws a window.
 
+## Catching up after downtime
+
+The relay's stream is a live doorbell, not a durable replay channel -- it only ever announces
+items created after the socket connects. Catching up on whatever arrived while this device
+was not listening (asleep, shut down over lunch, freshly restarted after an update) means
+following every connect and reconnect with `GET /api/items?since=`, and the value of `since`
+is the whole difficulty: it has to be a watermark that survives the process ending, not a
+timestamp captured moments before reconnecting, or anything received during the actual
+downtime is gone for good the instant the relay's 7-day retention catches up with it.
+
+`HistoryStore` persists that watermark (`get_catch_up_since`/`advance_catch_up_since`,
+`history/store.py`) as the relay's own timestamp for the newest item this device has
+successfully received -- deliberately not the same column as a `HistoryItem`'s own
+`created_at`, which is this device's local processing time and therefore vulnerable to clock
+skew if reused for a relay query. A fresh pairing, with nothing ever received yet, resumes
+from "now" rather than pulling the fleet's whole retained history onto a device that only
+just joined it.
+
+Because the live stream and a catch-up can genuinely both announce the same item in one
+reconnect -- and because the relay's catch-up list carries no per-device filtering at all, so
+a wide-enough catch-up window can echo back something this very device sent -- every
+announced item is checked against local history before ever being fetched, and the watermark
+still advances even for an item that turns out to already be known.
+
 ## Development
 
 ```
@@ -114,4 +138,4 @@ holds a `.widget` rather than inheriting from `Adw.StatusPage`).
 - `ui/` -- the window (paste-to-send, drag-and-drop, the history list with its Copy/Save
   actions), preferences, pairing view, and history rows.
 - `cli.py` / `app.py` -- the command-line grammar and the `Gtk.Application` that ties
-  everything together, held resident from startup.
+  everything together, resident once a command that means to stick around asks it to be.
