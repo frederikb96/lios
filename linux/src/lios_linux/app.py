@@ -359,6 +359,7 @@ class LiosApplication(Adw.Application):
         except rest.RelayError as exc:
             logger.warning("upload failed: %s", exc)
             return
+        self._ack_own_upload(item_id, device_token=device_token)
         self._history.add(
             HistoryItem(
                 id=item_id,
@@ -374,6 +375,26 @@ class LiosApplication(Adw.Application):
         )
         if self._window is not None:
             self._window.notify_history_changed()
+
+    def _ack_own_upload(self, item_id: str, *, device_token: str) -> None:
+        """Tell the relay this device already has everything it needs from an item it just
+        uploaded, so it does not linger there until every other paired device acks it too.
+
+        Called from `upload()`, on whichever thread that already blocked on `create_item` --
+        never scheduled onto the GTK main loop, matching every other relay call this client
+        makes. A failed ack is not a failed send: the item is uploaded and already in local
+        history, so this only logs and moves on rather than retrying or surfacing an error --
+        the relay's own age/count limits still evict the item eventually either way.
+        """
+        try:
+            rest.ack_item(
+                self.soup_session,
+                relay_url=self.config.relay_url,
+                device_token=device_token,
+                item_id=item_id,
+            )
+        except rest.RelayError as exc:
+            logger.warning("could not ack own upload %s: %s", item_id, exc)
 
     # -- Receiving ----------------------------------------------------------------------------
 

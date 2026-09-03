@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to the QR code, for a device with no camera to scan it, with the same warning about what the
   text exposes. The join screen also accepts a pasted link, feeding the same redeem path
   scanning already uses.
+- The Linux client acks its own uploads to the relay right after a send succeeds, so an item
+  it sent no longer sits there until every other paired device acks it too.
 
 ### Fixed
 
