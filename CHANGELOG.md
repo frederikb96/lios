@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Sharing a file from an app that offers only raw data -- with no name attached -- sent it
+  with no filename at all, leaving the receiving device nothing to save it as. The share
+  extension now takes the name the share sheet suggests where there is one, generates one
+  from the item's type otherwise, and reduces either to a safe single path component.
 - Saving a received file on Linux wrote it under the item's identifier with a `.bin`
   extension whenever the sender supplied no name, ignoring the MIME type that says exactly
   what the file is. The name is now the sender's own where there is one, and otherwise a
