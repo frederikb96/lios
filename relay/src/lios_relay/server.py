@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
@@ -56,7 +57,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> ASGIApp:
     """Create the LIOS relay ASGI application."""
     config = get_config()
-    app = FastAPI(title="LIOS Relay", lifespan=lifespan)
+    # Read off the installed distribution rather than restated here, so what a deployed
+    # relay reports as its version cannot drift from the artifact actually running.
+    app = FastAPI(title="LIOS Relay", version=version("lios-relay"), lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

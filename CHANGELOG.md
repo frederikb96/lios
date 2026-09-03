@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The relay's `/openapi.json` reported a fixed `0.1.0` as its version whatever was actually
+  running, so the one document that says what a deployed relay supports could not be used to
+  tell which build was serving it. It now reports the version of the installed package.
+
 ## [0.1.6] - 2026-09-03
 
 ### Added
