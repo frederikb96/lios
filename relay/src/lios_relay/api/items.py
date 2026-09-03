@@ -164,7 +164,7 @@ async def create_item_endpoint(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     event = StreamEvent(item=_item_summary(item))
-    get_broadcaster().publish(event.model_dump_json())
+    get_broadcaster().publish(event.model_dump_json(), recipient_ids)
 
     await _push_to_recipients(session, config, recipient_ids, item.id, device.id, sealed_preview)
 
@@ -220,15 +220,15 @@ async def get_item_endpoint(
 @router.get("")
 async def list_items_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
-    _device: Annotated[Device, Depends(require_device)],
+    device: Annotated[Device, Depends(require_device)],
     since: datetime = Query(
         default=datetime.fromtimestamp(0, tz=UTC),
         description="Return items created strictly after this timestamp -- the catch-up list "
         "for a client that was offline while the stream was announcing new items.",
     ),
 ) -> list[ItemSummary]:
-    """Catch-up list: every item's clear metadata, created after `since`."""
-    items = await list_items_since(session, since)
+    """Catch-up list: every item the caller is a recipient of, created after `since`."""
+    items = await list_items_since(session, since, device.id)
     return [_item_summary(item) for item in items]
 
 

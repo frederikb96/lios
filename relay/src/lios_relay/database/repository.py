@@ -166,10 +166,22 @@ async def get_item(session: AsyncSession, item_id: uuid.UUID) -> Item | None:
     return await session.get(Item, item_id)
 
 
-async def list_items_since(session: AsyncSession, since: datetime) -> list[Item]:
-    """Every item created strictly after `since`, oldest first -- the catch-up list."""
+async def list_items_since(
+    session: AsyncSession, since: datetime, device_id: uuid.UUID
+) -> list[Item]:
+    """Every item `device_id` is a recipient of, created strictly after `since`, oldest
+    first -- the catch-up list.
+
+    Joins against `ItemRecipient` rather than returning every item in the window: that table
+    is the same recipient snapshot `create_item` took at creation time, so a sender never
+    catches up on its own upload and a targeted item never reaches a device it wasn't
+    addressed to.
+    """
     result = await session.execute(
-        select(Item).where(Item.created_at > since).order_by(Item.created_at)
+        select(Item)
+        .join(ItemRecipient, ItemRecipient.item_id == Item.id)
+        .where(Item.created_at > since, ItemRecipient.device_id == device_id)
+        .order_by(Item.created_at)
     )
     return list(result.scalars().all())
 

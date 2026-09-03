@@ -62,7 +62,7 @@ async def stream(websocket: WebSocket) -> None:
 
     await websocket.accept()
     broadcaster = get_broadcaster()
-    queue = broadcaster.subscribe()
+    queue = broadcaster.subscribe(device.id)
     try:
         while True:
             try:

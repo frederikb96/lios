@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The relay's live stream announced every new item to every connected device, including the
+  one that had just uploaded it, and the catch-up list had the same gap -- a reconnecting or
+  restarting client could pull its own item back out of `GET /api/items?since=`. Both now
+  narrow to the item's actual recipient snapshot, so a sender is never told about its own
+  upload through either path.
 - The Linux client's history list only rebuilt itself on construction, after pairing, or
   when a notification for an item it didn't already know about was clicked -- so opening the
   window any other way (a shortcut, or simply reopening it) showed whatever was true the last

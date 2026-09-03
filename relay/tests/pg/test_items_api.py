@@ -17,7 +17,7 @@ from lios_protocol.headers import (
 import lios_relay.api.items as items_module
 from lios_relay.database.connection import DatabaseConnection
 from lios_relay.database.models import Item
-from lios_relay.database.repository import get_device_by_token
+from lios_relay.database.repository import create_device, generate_device_token, get_device_by_token
 from tests.pg.conftest import auth_headers, new_uuid
 
 
@@ -200,6 +200,51 @@ async def test_since_filters_out_earlier_items(client: AsyncClient, laptop_token
     )
     ids = [item["id"] for item in listed.json()]
     assert first["id"] not in ids
+
+
+async def test_catch_up_list_never_includes_the_senders_own_broadcast(
+    client: AsyncClient, laptop_token: str, phone_token: str,
+) -> None:
+    """A sender is never its own recipient, so its own broadcast must not reappear through
+    catch-up either -- not just be missing from the live stream."""
+    created = await _post_item(client, laptop_token, b"broadcast payload")
+
+    listed = await client.get("/api/items", headers=auth_headers(laptop_token))
+    ids = [item["id"] for item in listed.json()]
+    assert created["id"] not in ids
+
+    # Confirm it isn't just filtered by "since" -- the recipient (phone) still sees it.
+    listed_by_phone = await client.get("/api/items", headers=auth_headers(phone_token))
+    assert created["id"] in [item["id"] for item in listed_by_phone.json()]
+
+
+async def test_catch_up_list_only_reaches_the_targeted_device(
+    client: AsyncClient, laptop_token: str, phone_token: str, migrated_db: DatabaseConnection,
+) -> None:
+    """A targeted item must not show up in a bystander's catch-up list -- only the one device
+    it was addressed to, and never the sender."""
+    async with migrated_db.session() as session:
+        phone = await get_device_by_token(session, phone_token)
+    assert phone is not None
+
+    third_token = generate_device_token()
+    async with migrated_db.session() as session:
+        await create_device(
+            session, display_name="Test Tablet", platform="linux", token=third_token
+        )
+
+    created = await _post_item(
+        client, laptop_token, b"just for you", target_device_id=str(phone.id)
+    )
+
+    listed_by_target = await client.get("/api/items", headers=auth_headers(phone_token))
+    assert created["id"] in [item["id"] for item in listed_by_target.json()]
+
+    listed_by_bystander = await client.get("/api/items", headers=auth_headers(third_token))
+    assert created["id"] not in [item["id"] for item in listed_by_bystander.json()]
+
+    listed_by_sender = await client.get("/api/items", headers=auth_headers(laptop_token))
+    assert created["id"] not in [item["id"] for item in listed_by_sender.json()]
 
 
 async def test_get_unknown_item_is_404(client: AsyncClient, laptop_token: str) -> None:
