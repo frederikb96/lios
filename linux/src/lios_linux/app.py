@@ -7,12 +7,16 @@ would have to hand-build: single-instance enforcement, command-line forwarding f
 invocation over D-Bus (`G_APPLICATION_HANDLES_COMMAND_LINE`), D-Bus activation from a desktop
 file, and routing of notification/action clicks into `GAction`s.
 
-`self.hold()` in `do_startup` is what makes the app resident: without it, `Gtk.Application`
-quits the moment its last window closes, since nothing else is keeping the use-count above
-zero. Held, the process keeps running -- and keeps its relay connection open -- with no window
-on screen, which is what lets an item arrive and raise a notification at any time rather than
-only while a window happens to be open. The window itself is created once and hidden (never
-destroyed) on close, so reopening it is instant and its scroll position and selection survive.
+`do_startup` runs once per process, before this invocation's own arguments are even parsed
+(`do_command_line` always runs after it) -- so it does only what every invocation needs
+regardless of what was asked: registering actions. Everything that commits the process to
+staying alive -- `self.hold()`, opening the relay connection, the expiry timer, asking for
+autostart permission -- waits for `_become_resident()`, called only by the commands that mean
+to stick around (`show`, the windowless `background` used by autostart and the D-Bus service
+file, and a `pair` that just succeeded). A plain parse error or `-h`/`--help` never reaches it,
+so that invocation prints and exits instead of hanging forever with nothing left to do. The
+window itself is created once and hidden (never destroyed) on close, so reopening it is
+instant and its scroll position and selection survive.
 
 Every network and clipboard call runs on a worker thread and hops back to the main loop via
 `GLib.idle_add` before touching any GTK/history/config state -- none of those are thread-safe,
@@ -47,7 +51,6 @@ from lios_protocol.wire import ItemSummary  # noqa: E402
 
 from lios_linux import cli, keyring  # noqa: E402
 from lios_linux.clipboard import gdk  # noqa: E402
-from lios_linux.clipboard.priority import ClipboardKind  # noqa: E402
 from lios_linux.config import AppConfig  # noqa: E402
 from lios_linux.history.models import Direction, HistoryItem, ItemKind  # noqa: E402
 from lios_linux.history.store import HistoryStore  # noqa: E402
@@ -79,10 +82,6 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _kind_from_clipboard(kind: ClipboardKind) -> str:
-    return "image" if kind == ClipboardKind.IMAGE else "text"
-
-
 def _preview_for(kind: str, payload: bytes, *, filename: str | None) -> str:
     """A short display string -- the filename for image/file, a truncated decode for text."""
     if kind != "text":
@@ -92,7 +91,7 @@ def _preview_for(kind: str, payload: bytes, *, filename: str | None) -> str:
 
 
 class LiosApplication(Adw.Application):
-    """The one process, held resident from startup; one window, created once and reused."""
+    """The one process; one window, created once and reused; resident once asked to be."""
 
     def __init__(self) -> None:
         super().__init__(
@@ -109,17 +108,13 @@ class LiosApplication(Adw.Application):
         self._stream: StreamConnection | None = None
         self._window: LiosWindow | None = None
         self._pending_item_id: str | None = None
+        self._resident = False
 
     # -- Gio.Application lifecycle ---------------------------------------------------------
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
-        self.hold()  # stay resident with no window open -- see the module docstring.
         self._add_actions()
-        self._history.expire(now=_now())
-        GLib.timeout_add_seconds(_EXPIRY_INTERVAL_SECONDS, self._on_expiry_timer)
-        self._connect_to_relay_if_paired()
-        self._request_autostart_if_not_yet_asked()
 
     def do_activate(self) -> None:
         self.show_window()
@@ -138,8 +133,29 @@ class LiosApplication(Adw.Application):
     def _dispatch(self, command: cli.Command) -> None:
         if isinstance(command, cli.Pair):
             self._pair(command.uri)
+        elif isinstance(command, cli.RunBackground):
+            self._become_resident()
         else:
             self.show_window()
+
+    def _become_resident(self) -> None:
+        """Everything that commits this process to staying alive with no window required,
+        run at most once regardless of how many resident-triggering invocations arrive.
+
+        `self.hold()` is what actually keeps `Gtk.Application` from quitting once nothing
+        else (a window, an in-flight D-Bus call) references it -- without it the process
+        would exit the moment this invocation's `do_command_line` returns. The relay
+        connection, the expiry timer and the autostart request all belong here rather than
+        in `do_startup`, precisely so a `--help` or a failed `pair` never opens any of them.
+        """
+        if self._resident:
+            return
+        self._resident = True
+        self.hold()
+        self._history.expire(now=_now())
+        GLib.timeout_add_seconds(_EXPIRY_INTERVAL_SECONDS, self._on_expiry_timer)
+        self._connect_to_relay_if_paired()
+        self._request_autostart_if_not_yet_asked()
 
     def _add_actions(self) -> None:
         for name, handler in (
@@ -181,7 +197,7 @@ class LiosApplication(Adw.Application):
         background.request_autostart(
             connection,
             reason="Receive items from your paired phone while LIOS has no window open",
-            command=["lios"],
+            command=["lios", "background"],
             on_response=on_response,
         )
 
@@ -373,7 +389,18 @@ class LiosApplication(Adw.Application):
 
     def on_paired(self) -> None:
         """Called once this device has a device token and group key, however it got them --
-        the onboarding view (claim or join) and the `pair` CLI/action both funnel here."""
+        the onboarding view (claim or join) and the `pair` CLI/action both funnel here.
+
+        `_become_resident()` covers a standalone `lios pair <uri>` invocation that had no
+        window and was not otherwise resident yet -- pairing successfully is exactly the
+        moment it should start behaving like every other resident invocation, rather than
+        connecting to the relay and then immediately exiting with nothing left to hold it
+        open. The explicit `_connect_to_relay_if_paired()` call underneath still matters on
+        its own even when already resident (e.g. pairing from the onboarding view): the
+        earlier residency-establishing call ran before a token existed, so its own attempt to
+        connect was a no-op.
+        """
+        self._become_resident()
         self._connect_to_relay_if_paired()
 
     # -- Window ------------------------------------------------------------------------------
@@ -384,6 +411,7 @@ class LiosApplication(Adw.Application):
         With no pending item from a notification click, the window itself decides what "ready"
         means -- focusing the send field and selecting the newest received item.
         """
+        self._become_resident()
         if self._window is None:
             from lios_linux.ui.window import LiosWindow
 
@@ -397,7 +425,8 @@ class LiosApplication(Adw.Application):
         self._window.present()
 
     def _on_window_close_request(self, window: Gtk.ApplicationWindow) -> bool:
-        """Hide rather than destroy -- the process stays resident (`self.hold()` above), and
+        """Hide rather than destroy -- the process stays resident (`_become_resident()`
+        already held it, since showing a window always goes through there first), and
         reopening the same window is instant with its scroll position and selection intact."""
         window.set_visible(False)
         return bool(Gdk.EVENT_STOP)

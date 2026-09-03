@@ -29,17 +29,25 @@ bug.
 
 ## Staying resident
 
-`self.hold()` at startup keeps the process running once its last window closes -- otherwise a
-`Gtk.Application` quits the moment its window count reaches zero. Closing the window hides
-it rather than destroying it, so reopening (via a notification click or the bound shortcut) is
-instant and its scroll position and selection survive. A running, windowless, sandboxed app is
-what GNOME lists under Background Apps in its system menu, with a quit button that needs no
-code here to work.
+`self.hold()` keeps the process running once its last window closes -- otherwise a
+`Gtk.Application` quits the moment its window count reaches zero. It is called from
+`_become_resident()`, not unconditionally at startup: `do_startup` runs before this
+invocation's own arguments are parsed, so committing to residency there would also hold a
+plain `--help` or a failed `pair` open forever with nothing left to do. Only the commands that
+mean to stick around -- `show`, the windowless `background`, and a `pair` that just succeeded
+-- call it, guarded so a second such command in the same process is a no-op.
 
-There is no global shortcut portal call anywhere in this app. `lios show` is the one
-command-line entry point, forwarded to the running instance over D-Bus by
-`Gio.Application`'s command-line handling -- any desktop's own keyboard settings can bind it
-directly, with no portal, no consent dialog, and no dependency on a GNOME version that has one.
+Closing the window hides it rather than destroying it, so reopening (via a notification click
+or the bound shortcut) is instant and its scroll position and selection survive. A running,
+windowless, sandboxed app is what GNOME lists under Background Apps in its system menu, with a
+quit button that needs no code here to work.
+
+There is no global shortcut portal call anywhere in this app. `lios show` is the command-line
+entry point any desktop's own keyboard settings bind, forwarded to the running instance over
+D-Bus by `Gio.Application`'s command-line handling -- no portal, no consent dialog, no
+dependency on a GNOME version that has one. `lios background` is the internal counterpart: the
+D-Bus service file and the autostart command registered with the Background portal both use
+it, so bringing the app up at login or via D-Bus activation never draws a window.
 
 ## Development
 

@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Linux client's relay stream handler converted every incoming WebSocket frame with
   `bytes(...)` on a `GLib.Bytes` object, which always raised -- nothing sent from the phone
   ever reached the laptop, and the failure repeated on every keepalive too.
+- A cold `lios --help` (or any parse error) never used to exit: `do_startup` held the process
+  resident before its own arguments were even parsed. Residency now waits for a command that
+  means to stick around (`show`, the internal `background`, or a `pair` that just succeeded).
+- Autostart and D-Bus service activation used to invoke the app with no arguments, which meant
+  "show the window" -- so granting autostart permission popped a window at every login. Both
+  now invoke the new, windowless `lios background` instead.
 
 ## [0.1.1] - 2026-09-02
 
