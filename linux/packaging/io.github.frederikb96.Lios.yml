@@ -4,8 +4,8 @@ runtime-version: '50'
 sdk: org.gnome.Sdk
 command: lios
 
-# Only what portals cannot cover. Background, GlobalShortcuts, Notification, FileChooser and
-# FileTransfer all go through the session's xdg-desktop-portal and need no finish-args here.
+# Only what portals cannot cover. Background, Notification, FileChooser and FileTransfer all
+# go through the session's xdg-desktop-portal and need no finish-args here.
 finish-args:
   - --share=network
   - --share=ipc
@@ -17,21 +17,6 @@ finish-args:
   - --talk-name=org.freedesktop.secrets
 
 modules:
-  # wl-clipboard is GPL-3.0-or-later. It is spawned as a subprocess (clipboard/wl.py), never
-  # linked -- aggregation, not a derivative work, so this application stays MIT. Built from
-  # source here, which satisfies the GPL source-offer obligation for what is bundled.
-  - name: wl-clipboard
-    buildsystem: meson
-    # The default fish-completion directory is outside /app and unwritable in the sandbox;
-    # bash and zsh completions install under /app without issue and are left enabled.
-    config-opts:
-      - -Dfishcompletiondir=no
-    sources:
-      - type: git
-        url: https://github.com/bugaevc/wl-clipboard.git
-        tag: v2.3.0
-        commit: 67a7b937895bceec1ae5ccebb10216f63f70ca1b
-
   # cryptography, pydantic and qrcode, as prebuilt manylinux/pure-Python wheels pinned by URL
   # and sha256 (generated with flatpak-builder-tools' flatpak-pip-generator, then corrected by
   # hand to manylinux wheels for cffi/pydantic-core rather than the sdists it picked -- see

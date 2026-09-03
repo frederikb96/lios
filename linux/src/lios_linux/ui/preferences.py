@@ -1,4 +1,4 @@
-"""`AdwPreferencesDialog`: relay URL, retention, and where the two shortcuts get bound.
+"""`AdwPreferencesDialog`: relay URL, retention, and where the raise-window shortcut gets bound.
 
 Untestable in this environment: needs a live display connection.
 """
@@ -50,11 +50,11 @@ class LiosPreferencesDialog(Adw.PreferencesDialog):
 
         page.add(
             Adw.PreferencesGroup(
-                title="Shortcuts",
+                title="Shortcut",
                 description=(
-                    "Bind these in GNOME Settings (or any desktop's own keyboard settings) "
-                    "to `flatpak run --command=lios io.github.frederikb96.Lios "
-                    "send-clipboard` and `... send-file`."
+                    "Bind a key in GNOME Settings (or any desktop's own keyboard settings) "
+                    "to `flatpak run --command=lios io.github.frederikb96.Lios show` to "
+                    "raise this window, focused and ready to paste."
                 ),
             )
         )

@@ -1,24 +1,34 @@
 """The long-lived `/api/stream` connection: connect, catch up, reconnect on any disconnect.
 
-Follows the relay's own reconnect contract (`lios_relay.api.stream` module docstring)
-verbatim: remember "now" before connecting, catch up via `GET /api/items?since=` after every
-successful connect (including the first), and reconnect with `relaylink.backoff`'s schedule on
-any disconnect -- server-initiated or not, never a reason to stop trying.
+Every catch-up -- the first connect this process ever makes, and every reconnect after it --
+resumes from `get_catch_up_since()`'s current answer rather than a timestamp captured at
+connect time. Capturing "now" right before connecting is wrong twice over: it misses whatever
+arrived during the disconnected gap itself (the gap ends before the reconnect fires, not
+after), and it does not survive the process restarting at all, since nothing remembers where
+the previous run left off. `get_catch_up_since` is a callback rather than a value so the
+caller (`app.py`) can own where that watermark actually lives and how it advances; this module
+only ever asks for the current answer, right when it is about to use it.
+
+Reconnects with `relaylink.backoff`'s schedule on any disconnect -- server-initiated or not,
+never a reason to stop trying.
 
 🚨 Unverified against a live relay or a real `Soup.Session`: `websocket_connect_async`'s exact
 PyGObject argument order (message, origin, protocols, io_priority, cancellable, callback) is
-written from the libsoup3 C API and could not be exercised here -- there is no relay running
-and no network access from `this machine` into one. Confirm against a real connection before
+written from the libsoup3 C API and could not be exercised in this headless environment, with
+no relay running and no network access into one. Confirm against a real connection before
 shipping.
 
-Untestable in this environment without a running relay to connect to.
+Untestable end to end in this environment without a running relay to connect to. `_on_message`
+itself is an exception -- it needs only a real `GLib.Bytes` and `Soup.WebsocketDataType`, no
+socket at all, and is unit-tested directly against those; likewise `_catch_up`, driven by a
+fake `Soup.Session`-shaped object rather than a real connection.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import gi
@@ -40,7 +50,9 @@ class StreamConnection:
 
     `on_item` is called once per item, whether it was announced live over the socket or
     learned about from the catch-up list -- one place to handle a new item regardless of how
-    it was discovered.
+    it was discovered. The caller is expected to treat an already-known item id as a safe
+    no-op, since the two routes can genuinely overlap: a catch-up spanning the moment the
+    socket opens can list an item the live stream is about to announce anyway.
     """
 
     def __init__(
@@ -50,11 +62,13 @@ class StreamConnection:
         device_token: str,
         session: Soup.Session,
         on_item: Callable[[ItemSummary], None],
+        get_catch_up_since: Callable[[], datetime],
     ) -> None:
         self._relay_url = relay_url
         self._device_token = device_token
         self._session = session
         self._on_item = on_item
+        self._get_catch_up_since = get_catch_up_since
         self._attempt = 0
         self._stopped = True
         self._connection: Soup.WebsocketConnection | None = None
@@ -74,23 +88,19 @@ class StreamConnection:
     def _connect(self) -> None:
         if self._stopped:
             return
-        connect_time = datetime.now(UTC)
         message = Soup.Message.new("GET", endpoints.stream_url(self._relay_url))
+        if message is None:
+            logger.warning("relay stream: malformed URL %s", self._relay_url)
+            self._schedule_reconnect()
+            return
         message.get_request_headers().append(
             "Authorization", endpoints.auth_header(self._device_token)["Authorization"]
         )
         self._session.websocket_connect_async(
-            message,
-            None,
-            [],
-            GLib.PRIORITY_DEFAULT,
-            None,
-            lambda session, result: self._on_connected(session, result, connect_time),
+            message, None, [], GLib.PRIORITY_DEFAULT, None, self._on_connected
         )
 
-    def _on_connected(
-        self, session: Soup.Session, result: Any, connect_time: datetime
-    ) -> None:
+    def _on_connected(self, session: Soup.Session, result: Any) -> None:
         try:
             self._connection = session.websocket_connect_finish(result)
         except GLib.Error as exc:
@@ -100,10 +110,12 @@ class StreamConnection:
         self._attempt = 0
         self._connection.connect("message", self._on_message)
         self._connection.connect("closed", lambda *_args: self._on_closed())
-        self._catch_up(connect_time)
+        self._catch_up()
 
-    def _catch_up(self, since: datetime) -> None:
-        """Pull everything created since `since` -- covers the gap since the last disconnect."""
+    def _catch_up(self) -> None:
+        """Pull everything created since the current watermark -- whatever was missed,
+        however long the gap was or however it came about."""
+        since = self._get_catch_up_since()
         try:
             items = rest.list_items_since(
                 self._session,
@@ -125,7 +137,7 @@ class StreamConnection:
     ) -> None:
         if message_type != Soup.WebsocketDataType.TEXT:
             return
-        payload = bytes(message).decode("utf-8")
+        payload = message.get_data().decode("utf-8")
         if '"type":"ping"' in payload:
             return
         event = StreamEvent.model_validate_json(payload)

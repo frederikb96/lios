@@ -11,9 +11,10 @@
   <description>
     <p>
       LIOS bridges the clipboard between a Linux desktop and a paired phone. Press a keyboard
-      shortcut to send whatever is on the clipboard -- text, an image, or a file copied in the
-      file manager -- and it arrives on the phone within seconds. Sending the other way raises
-      a notification whose default action puts the item straight on the clipboard.
+      shortcut to raise its window, paste -- text, an image, or a file copied in the file
+      manager -- and it arrives on the phone within seconds. Sending the other way raises a
+      notification; clicking it opens the window with that item selected, ready to copy or
+      save with one more press.
     </p>
     <p>
       Runs quietly in the background with no window open, and keeps a short local history of

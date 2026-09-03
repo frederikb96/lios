@@ -1,15 +1,14 @@
-"""Native `Gdk.Clipboard` access -- the one trigger where it is strictly better than `wl.py`.
+"""Writing the system clipboard via native `Gdk.Clipboard`.
 
-An in-window button click carries its own fresh `pointer_info.press_serial`, satisfying both
-of mutter's gates (client focus, and a serial newer than the current owner's) with no focus
-blip at all -- the clipboard investigation, section 8. From any other trigger
-(a GlobalShortcuts activation, a notification click) GDK has no fresh serial to spend and
-`set_content()` silently no-ops while still reporting success; those triggers must use
-:mod:`wl` instead. Never call the functions here from anything but an in-window button-click
-handler.
+Every call site is a handler for an input event the window itself received -- a click on a
+history row's Copy button, or its keyboard accelerator -- which is exactly what satisfies
+mutter's gate: keyboard focus, and a `wl_display` serial newer than the current owner's. GDK
+sources that serial from the key/button press that led here, so `set_content()` genuinely
+takes ownership rather than silently no-opping the way it would from a shortcut or notification
+trigger with no input event behind it.
 
-Untestable in this environment: constructing a `Gdk.Clipboard` needs a live display
-connection, which `this machine` (headless) does not have.
+Untestable in a headless environment: constructing a `Gdk.Clipboard` needs a live display
+connection.
 """
 
 from __future__ import annotations
@@ -18,19 +17,28 @@ import gi
 
 gi.require_version("Gdk", "4.0")
 gi.require_version("GObject", "2.0")
+gi.require_version("GLib", "2.0")
 
-from gi.repository import Gdk, GObject  # noqa: E402
-
-
-def write_text_from_click(text: str) -> None:
-    """Set the clipboard to `text`. Call only from an in-window button-click handler."""
-    clipboard = Gdk.Display.get_default().get_clipboard()
-    clipboard.set_content(Gdk.ContentProvider.new_for_value(GObject.Value(str, text)))
+from gi.repository import Gdk, GLib, GObject  # noqa: E402
 
 
-def write_texture_from_click(texture: "Gdk.Texture") -> None:
-    """Set the clipboard to an image. Call only from an in-window button-click handler."""
-    clipboard = Gdk.Display.get_default().get_clipboard()
-    clipboard.set_content(
-        Gdk.ContentProvider.new_for_value(GObject.Value(Gdk.Texture, texture))
-    )
+def _clipboard() -> Gdk.Clipboard:
+    display = Gdk.Display.get_default()
+    if display is None:
+        raise RuntimeError("no default Gdk.Display -- no Wayland session to write to")
+    return display.get_clipboard()
+
+
+def write_text(text: str) -> None:
+    """Put `text` on the clipboard as a string."""
+    # PyGObject accepts a Python type here and translates it to the matching GType itself;
+    # PyGObject-stubs types the parameter more narrowly than the real, common idiom.
+    value = GObject.Value(str, text)  # type: ignore[arg-type]
+    _clipboard().set_content(Gdk.ContentProvider.new_for_value(value))
+
+
+def write_image_png(data: bytes) -> None:
+    """Put `data` (already-encoded PNG bytes) on the clipboard as an image."""
+    texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
+    value = GObject.Value(Gdk.Texture, texture)  # type: ignore[arg-type]
+    _clipboard().set_content(Gdk.ContentProvider.new_for_value(value))

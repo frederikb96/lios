@@ -12,14 +12,14 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-#: How many of the newest items `HistoryStore.expire` keeps -- the design's default.
+#: How many of the newest items `HistoryStore.expire` keeps.
 DEFAULT_MAX_ITEMS = 50
 
-#: How many days an item survives regardless of the item cap -- the design's default.
+#: How many days an item survives regardless of the item cap.
 DEFAULT_MAX_AGE_DAYS = 7
 
-#: The relay the user runs. Shipped as the default so there is nothing to type on a fresh
-#: install -- editable in preferences for anyone self-hosting their own.
+#: The author's own hosted relay. Shipped as the default so there is nothing to type on a
+#: fresh install -- editable in preferences for anyone self-hosting their own.
 DEFAULT_RELAY_URL = "https://lios.frederikberg.net"
 
 

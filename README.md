@@ -13,9 +13,9 @@ network.
 ```
 iPhone                          Relay                            Linux laptop
 ------                          -----                             ------------
-LIOS app                        lios-relay                        LIOS client (systemd --user)
-  Share Extension  --POST-->      REST API          --WS-->         receive -> clipboard + notify
-  main app (history)              PostgreSQL                        send: shortcut -> clipboard -> POST
+LIOS app                        lios-relay                        LIOS client (resident Flatpak)
+  Share Extension  --POST-->      REST API          --WS-->         notify -> open window -> copy
+  main app (history)              PostgreSQL                        send: open window -> paste -> POST
   receive path     <--APNs--       APNs sender
 ```
 

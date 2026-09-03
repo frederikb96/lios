@@ -1,8 +1,8 @@
 """The two pairing roles: an already-paired device minting a QR for a new one, and a fresh
 device redeeming a scanned (or typed) code.
 
-The group key never touches the relay in either direction (the design) -- it travels only
-inside the QR payload `lios_protocol.pairing` builds and decodes, entirely client-side. This
+The group key never touches the relay in either direction -- it travels only inside the QR
+payload `lios_protocol.pairing` builds and decodes, entirely client-side. This
 module is the glue between that library, the relay's pairing endpoints (`relaylink.rest`), and
 where the two secrets end up locally (`lios_linux.keyring`).
 

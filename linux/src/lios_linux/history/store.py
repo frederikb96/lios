@@ -3,12 +3,20 @@
 Two independent limits, both enforced by :meth:`HistoryStore.expire`: an item older than
 `max_age_days` is gone regardless of how few items exist; the newest `max_items` survive
 regardless of age. An item dismissed without saving is still findable until either limit
-catches it (the design) -- there is no other way for an item to disappear.
+catches it -- there is no other way for an item to disappear.
 
 Nothing is unlinked lazily. `expire` is the only place a blob file is deleted, and it always
 deletes the blob together with the row that referenced it -- never one without the other. It
 is meant to run at startup and on a periodic timer, both driven by the application, not by
 this module.
+
+Also holds the one piece of state that must outlive the process entirely: the relay-side
+catch-up watermark (`get_catch_up_since`/`advance_catch_up_since`), a single row kept apart
+from the `items` table on purpose. An item's own `created_at` column is this device's local
+processing time -- fine for local retention, wrong for a relay query, since a clock-skewed
+local clock could set a watermark ahead of the relay's own idea of "now" and cause the next
+catch-up to skip something. The watermark only ever advances from `ItemSummary.created_at`,
+the relay's own authoritative timestamp.
 """
 
 from __future__ import annotations
@@ -33,6 +41,11 @@ CREATE TABLE IF NOT EXISTS items (
     blob_path TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_items_created_at ON items (created_at);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+    id INTEGER PRIMARY KEY CHECK (id = 0),
+    catch_up_since REAL NOT NULL
+);
 """
 
 
@@ -145,6 +158,36 @@ class HistoryStore:
             )
             for row in rows
         ]
+
+    def get_catch_up_since(self) -> datetime | None:
+        """The relay timestamp of the newest item this device has successfully received,
+        persisted across restarts -- the watermark the next `/api/stream` catch-up resumes
+        from. `None` if nothing has ever been received (a fresh pairing, or a device that
+        has only ever sent), in which case the caller falls back to "now": there is nothing
+        to catch up on, and a brand-new device should not retroactively pull the fleet's
+        whole retained history.
+        """
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT catch_up_since FROM sync_state WHERE id = 0").fetchone()
+        if row is None:
+            return None
+        return datetime.fromtimestamp(row[0], tz=UTC)
+
+    def advance_catch_up_since(self, when: datetime) -> None:
+        """Move the watermark forward to `when` if it is newer than what is already stored.
+
+        Never backward: items can arrive out of the relay's own creation order (a slow
+        upload retried after a faster, later one already landed), and regressing the
+        watermark would make the next catch-up re-list things already handled.
+        """
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT INTO sync_state (id, catch_up_since) VALUES (0, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "catch_up_since = MAX(catch_up_since, excluded.catch_up_since)",
+                (when.timestamp(),),
+            )
+            conn.commit()
 
     def update_limits(self, *, max_items: int, max_age_days: int) -> None:
         """Change the retention limits `expire` enforces from now on -- e.g. after the user

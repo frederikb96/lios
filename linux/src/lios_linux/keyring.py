@@ -1,14 +1,13 @@
 """Secrets at rest -- the device token and the fleet's group key -- via the Secret Service.
 
 Not a file on disk: both are exactly what an attacker with read access to the Flatpak's data
-directory would want (the design, "Keys at rest"). `libsecret` reaches the Secret Service
-(GNOME Keyring) over the session bus; the Flatpak manifest needs
-`--talk-name=org.freedesktop.secrets` for it, a filtered D-Bus name grant `xdg-dbus-proxy`
-allows without opening the whole session bus (`--socket=session-bus`), which the rest of the
-manifest deliberately stays away from.
+directory would want. `libsecret` reaches the Secret Service (GNOME Keyring) over the session
+bus; the Flatpak manifest needs `--talk-name=org.freedesktop.secrets` for it, a filtered D-Bus
+name grant `xdg-dbus-proxy` allows without opening the whole session bus
+(`--socket=session-bus`), which the rest of the manifest deliberately stays away from.
 
-Untestable in this environment without a running, unlocked Secret Service daemon -- `this machine`
-has no desktop session and so no keyring to store into. Synchronous calls: both secrets are
+Untestable in a headless environment without a running, unlocked Secret Service daemon and no
+desktop session, so no keyring to store into. Synchronous calls: both secrets are
 read once at startup and written only at pairing, never on a hot path, so blocking briefly is
 an acceptable trade against building a second async pattern alongside `relaylink.client`'s.
 """
