@@ -1,8 +1,8 @@
 """The LIOS window: onboarding, history, drag-and-drop, paste-to-send, and receiving.
 
 Created once by `app.py`'s `show_window` and hidden (never destroyed) on close, so the
-resident footprint stays low between uses while reopening is instant and keeps its state (spec
-row 85). Every clipboard touch in this file happens inside this window while it has focus, in
+resident footprint stays low between uses while reopening is instant and keeps its state.
+Every clipboard touch in this file happens inside this window while it has focus, in
 response to an input event the app itself received -- a paste, a click, an accelerator -- which
 is exactly what satisfies mutter's clipboard gate with no helper process (see
 `lios_linux.clipboard`).
