@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-03
+
 ### Added
 
 - Release tags attach a prebuilt `.flatpak` bundle of the Linux client, built by the release
