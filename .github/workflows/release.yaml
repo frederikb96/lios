@@ -110,9 +110,47 @@ jobs:
           helm package charts/lios --destination dist
           helm push "dist/lios-${{ needs.guard.outputs.version }}.tgz" "${{ env.CHART_REGISTRY }}"
 
+  # flatpak-builder runs every build step inside a bubblewrap sandbox, and bubblewrap needs an
+  # unprivileged user namespace to create one. A hosted runner is a full VM and provides that,
+  # so the toolchain installs and runs directly with nothing nested underneath it. The runtime
+  # version is read out of the manifest rather than repeated here.
+  flatpak:
+    name: Build Flatpak bundle
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the Flatpak toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends flatpak flatpak-builder
+
+      - name: Build the bundle
+        working-directory: linux
+        run: |
+          set -euo pipefail
+          runtime=$(grep -oP "^runtime-version:\s*'\K[^']+" \
+            packaging/io.github.frederikb96.Lios.yml)
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            "org.gnome.Platform//$runtime" "org.gnome.Sdk//$runtime"
+          flatpak-builder --repo=repo --force-clean \
+            build packaging/io.github.frederikb96.Lios.yml
+          flatpak build-bundle \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            repo lios.flatpak io.github.frederikb96.Lios
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lios-flatpak
+          path: linux/lios.flatpak
+          retention-days: 1
+
   publish:
     name: Publish GitHub release
-    needs: [guard, image, chart]
+    needs: [guard, image, chart, flatpak]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -121,9 +159,15 @@ jobs:
         with:
           name: release-notes
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: lios-flatpak
+          path: dist
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: release-notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}
+          files: dist/lios.flatpak

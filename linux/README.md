@@ -128,6 +128,9 @@ install --user --bundle lios.flatpak` on a machine with no Flathub remote config
 offered one automatically to pull `org.gnome.Platform`//50 from, rather than failing on a
 missing runtime with no next step.
 
+A release tag carries this same bundle, built by the release workflow rather than by hand --
+see the root README for installing it.
+
 `share/dbus-1/services/io.github.frederikb96.Lios.service` (installed by `lios-linux`'s own
 build commands in the manifest) is required, not automatic, for the `.desktop` file's
 `DBusActivatable=true` -- `flatpak-builder`'s plain `--install` build does not validate this,

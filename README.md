@@ -46,6 +46,19 @@ already-paired device generates. See [`relay/README.md`](relay/README.md) for th
 For development -- hot reload, a throwaway Postgres -- see
 [`relay/README.md`](relay/README.md#development).
 
+## Installing the Linux client
+
+Every [release](https://github.com/frederikb96/lios/releases) attaches a `.flatpak` bundle
+built from the tagged commit.
+
+```bash
+flatpak install --user --bundle lios.flatpak
+```
+
+It carries a pointer to Flathub's own repo, so a machine with no Flathub remote configured
+yet gets offered one automatically to pull `org.gnome.Platform` from. Building the bundle
+from source instead is covered in [`linux/README.md`](linux/README.md#packaging).
+
 ## Kubernetes
 
 A Helm chart ships in [`charts/lios`](charts/lios) and is published on release:
