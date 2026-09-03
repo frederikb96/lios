@@ -15,10 +15,12 @@ struct PairingView: View {
                         .font(.title2.bold())
                     Button("Scan a Pairing QR Code", action: viewModel.chooseScan)
                         .buttonStyle(.borderedProminent)
+                    Button("Paste a Pairing Link", action: viewModel.choosePasteLink)
+                        .buttonStyle(.bordered)
                     Button("Set Up a New Relay", action: viewModel.chooseSetUpNewRelay)
                         .buttonStyle(.bordered)
                     Text(
-                        "Scan the code if the Linux client already shows one. Set up a new relay only if this is the very first device to connect to it."
+                        "Scan the code, or paste it, if the other client already shows one. Set up a new relay only if this is the very first device to connect to it."
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -50,6 +52,21 @@ struct PairingView: View {
                     Button("Continue", action: viewModel.submitRelayURL)
                         .buttonStyle(.borderedProminent)
                         .disabled(viewModel.relayURLText.isEmpty)
+                }
+                .padding()
+            case .pastingLink:
+                VStack(spacing: 16) {
+                    Text("Pairing link")
+                        .font(.headline)
+                    TextField("lios://pair/…", text: $viewModel.pastedLinkText)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .padding(.horizontal)
+                    Button("Continue", action: viewModel.submitPastedLink)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.pastedLinkText.isEmpty)
                 }
                 .padding()
             case .bootstrapping, .redeeming:

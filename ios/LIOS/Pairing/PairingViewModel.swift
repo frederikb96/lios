@@ -9,6 +9,7 @@ final class PairingViewModel {
         case choosing
         case scanning
         case enteringRelayURL
+        case pastingLink
         case bootstrapping
         case redeeming
         case failed(String)
@@ -16,6 +17,7 @@ final class PairingViewModel {
 
     var state: PairingState = .choosing
     var relayURLText: String = ""
+    var pastedLinkText: String = ""
 
     func chooseScan() {
         state = .scanning
@@ -25,10 +27,23 @@ final class PairingViewModel {
         state = .enteringRelayURL
     }
 
+    func choosePasteLink() {
+        state = .pastingLink
+    }
+
     func handleScannedCode(_ code: String) {
         state = .redeeming
         Task {
             await redeem(code)
+        }
+    }
+
+    /// Feeds the same redeem path `handleScannedCode` uses — a pasted link is just a
+    /// `lios://pair/...` URI the user typed or pasted instead of a camera reading it.
+    func submitPastedLink() {
+        state = .redeeming
+        Task {
+            await redeem(pastedLinkText.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 

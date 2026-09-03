@@ -1,5 +1,6 @@
 import LIOSKit
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
@@ -66,6 +67,10 @@ final class SettingsViewModel {
 
     func dismissInvite() {
         inviteState = .idle
+    }
+
+    func copyInviteLink(_ uri: String) {
+        UIPasteboard.general.string = uri
     }
 
     /// The retention policy is a device-local preference, not a secret, so it lives in

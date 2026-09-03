@@ -74,7 +74,9 @@ private struct SettingsForm: View {
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: inviteSheetBinding) {
-                InviteDeviceSheet(state: viewModel.inviteState, dismiss: viewModel.dismissInvite)
+                InviteDeviceSheet(
+                    state: viewModel.inviteState, dismiss: viewModel.dismissInvite,
+                    copyLink: viewModel.copyInviteLink)
             }
         }
     }
@@ -92,6 +94,7 @@ private struct SettingsForm: View {
 private struct InviteDeviceSheet: View {
     let state: SettingsViewModel.InviteState
     let dismiss: () -> Void
+    let copyLink: (String) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -113,6 +116,7 @@ private struct InviteDeviceSheet: View {
                 } else {
                     Text("Couldn't render the QR code.")
                 }
+                InviteLinkText(uri: qrUri, copyLink: copyLink)
             case .failed(let message):
                 Text(message)
                     .multilineTextAlignment(.center)
@@ -120,5 +124,35 @@ private struct InviteDeviceSheet: View {
             Button("Close", action: dismiss)
         }
         .padding()
+    }
+}
+
+/// The same URI the QR image encodes, offered as a fallback for a device with no camera to
+/// point at it: selectable so it can be copied by hand, and copyable in one tap so the receiving
+/// device's own paste field (`PairingView`'s "Paste a Pairing Link") just works.
+private struct InviteLinkText: View {
+    let uri: String
+    let copyLink: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(uri)
+                .font(.footnote.monospaced())
+                .textSelection(.enabled)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button {
+                copyLink(uri)
+            } label: {
+                Label("Copy Link", systemImage: "doc.on.doc")
+            }
+            Text(
+                "Anyone who sees this text, or the clipboard history it lands in, can read everything ever sent to or from this device — until the whole fleet is re-paired. This key never expires and can't be rotated."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal)
+        }
     }
 }
