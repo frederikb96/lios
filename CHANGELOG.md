@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-03
+
 ### Changed
 
 - `lios-linux` is now a resident application with no separate helper process: it stays

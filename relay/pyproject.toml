@@ -1,6 +1,6 @@
 [project]
 name = "lios-relay"
-version = "0.1.1"
+version = "0.1.2"
 description = "LIOS relay -- stores ciphertext, tracks acks, rings doorbells. Cannot read a byte it forwards."
 readme = "README.md"
 requires-python = ">=3.13"
