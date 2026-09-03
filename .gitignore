@@ -24,7 +24,7 @@ config-custom/*.yaml
 .vscode/
 *.swp
 
-# Claude
+# Local tooling state
 .claude/
 
 # OS
