@@ -49,6 +49,22 @@ dependency on a GNOME version that has one. `lios background` is the internal co
 D-Bus service file and the autostart command registered with the Background portal both use
 it, so bringing the app up at login or via D-Bus activation never draws a window.
 
+## Staying current
+
+Being resident cuts the other way too: installing a new build replaces files on disk that an
+already-running process's sandbox has mounted from a specific, immutable checkout, so nothing
+that process reads from its own filesystem ever reflects the new version. `lios_linux.portals.
+updates` asks the Flatpak portal's `CreateUpdateMonitor` to say so from outside that sandbox --
+the one place able to see that the installed commit has moved on, whether that happened via a
+real remote update or a bare `flatpak-builder --install` of a freshly rebuilt one.
+
+Once told, the app quits the moment doing so loses nothing: no file-send in flight, and no
+window currently open for someone to be looking at. `lios show`/D-Bus activation start a fresh
+process on the next invocation regardless, running whatever is now installed. If the window
+happens to be open when a newer build is found, quitting waits for it to close instead, and a
+banner says so in the meantime -- never silently serving old code with no indication anything
+changed.
+
 ## Catching up after downtime
 
 The relay's stream is a live doorbell, not a durable replay channel -- it only ever announces
@@ -133,7 +149,7 @@ holds a `.widget` rather than inheriting from `Adw.StatusPage`).
 - `relaylink/` -- the relay connection: REST calls, the `/api/stream` WebSocket with
   reconnect/backoff, pairing, and the item envelope (framing + encryption, via
   `lios-protocol`).
-- `portals/` -- Background (autostart) and Notification.
+- `portals/` -- Background (autostart), Notification, and Flatpak update detection.
 - `keyring.py` -- the device token and group key, via the Secret Service.
 - `ui/` -- the window (paste-to-send, drag-and-drop, the history list with its Copy/Save
   actions), preferences, pairing view, and history rows.

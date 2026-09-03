@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Linux client kept running the build it launched with after a newer one was installed
+  over it, since replacing files on disk never touches an already-running process's own
+  mounted view of them -- so reopening the window after an update could still show old code
+  and old state with nothing to say so. It now asks the Flatpak portal whether the installed
+  build has moved on, quits on its own the moment doing so loses nothing, and shows a banner
+  asking for a restart instead of quitting out from under an open window or a file mid-send.
+- The Linux client's window redecided which of history, onboarding, or the keyring-unavailable
+  view to show only at construction, after pairing, and after a keyring unlock attempt --
+  never on an ordinary reopen, so a window hidden while showing one of those could reopen
+  still showing it long after the underlying condition (pairing completing, the keyring
+  becoming reachable again) had changed. Reopening the window now always redecides.
+
 ## [0.1.3] - 2026-09-03
 
 ### Fixed

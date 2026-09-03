@@ -11,12 +11,14 @@ file, and routing of notification/action clicks into `GAction`s.
 (`do_command_line` always runs after it) -- so it does only what every invocation needs
 regardless of what was asked: registering actions. Everything that commits the process to
 staying alive -- `self.hold()`, opening the relay connection, the expiry timer, asking for
-autostart permission -- waits for `_become_resident()`, called only by the commands that mean
-to stick around (`show`, the windowless `background` used by autostart and the D-Bus service
-file, and a `pair` that just succeeded). A plain parse error or `-h`/`--help` never reaches it,
-so that invocation prints and exits instead of hanging forever with nothing left to do. The
-window itself is created once and hidden (never destroyed) on close, so reopening it is
-instant and its scroll position and selection survive.
+autostart permission, watching for a newer build appearing underneath it (`portals.updates`)
+-- waits for `_become_resident()`, called only by the commands that mean to stick around
+(`show`, the windowless `background` used by autostart and the D-Bus service file, and a
+`pair` that just succeeded). A plain parse error or `-h`/`--help` never reaches it, so that
+invocation prints and exits instead of hanging forever with nothing left to do. The window
+itself is created once and hidden (never destroyed) on close, so reopening it is instant and
+its scroll position and selection survive -- and remade with every reopening rather than
+assumed to still hold, so nothing it shows outlives whatever it was true of.
 
 Every network and clipboard call runs on a worker thread and hops back to the main loop via
 `GLib.idle_add` before touching any GTK/history/config state -- none of those are thread-safe,
@@ -54,7 +56,7 @@ from lios_linux.clipboard import gdk  # noqa: E402
 from lios_linux.config import AppConfig  # noqa: E402
 from lios_linux.history.models import Direction, HistoryItem, ItemKind  # noqa: E402
 from lios_linux.history.store import HistoryStore  # noqa: E402
-from lios_linux.portals import background, notifications  # noqa: E402
+from lios_linux.portals import background, notifications, updates  # noqa: E402
 from lios_linux.relaylink import item_codec, pairing_flow, rest  # noqa: E402
 from lios_linux.relaylink.item_codec import DecodedItem  # noqa: E402
 from lios_linux.relaylink.stream import StreamConnection  # noqa: E402
@@ -90,6 +92,20 @@ def _preview_for(kind: str, payload: bytes, *, filename: str | None) -> str:
     return text if len(text) <= 80 else text[:77] + "..."
 
 
+def _should_quit_for_stale_build(
+    *, stale: bool, inflight_sends: int, window_visible: bool
+) -> bool:
+    """Whether this is a safe moment to exit because a newer build is already installed
+    (`portals.updates`): only once nothing would be lost by it -- no file-send in flight, and
+    no window currently on screen for anyone to be looking at (a hidden window still counts as
+    "off screen" here; see `LiosApplication._on_window_close_request`).
+
+    Pure and total, so it is testable with no `gi`, `Gtk`, or display at all -- unlike
+    everything that calls it, which needs a live `Gio.Application` to even construct.
+    """
+    return stale and inflight_sends == 0 and not window_visible
+
+
 class LiosApplication(Adw.Application):
     """The one process; one window, created once and reused; resident once asked to be."""
 
@@ -109,6 +125,16 @@ class LiosApplication(Adw.Application):
         self._window: LiosWindow | None = None
         self._pending_item_id: str | None = None
         self._resident = False
+        self._stale_version = False
+        self._inflight_sends = 0
+
+    @property
+    def is_stale_version(self) -> bool:
+        """Whether a newer build is already installed than the one this process launched
+        with -- see `portals.updates` and `_on_build_stale`. `LiosWindow` reads this every
+        time it is shown, so a window created after staleness was already detected still
+        opens knowing about it."""
+        return self._stale_version
 
     # -- Gio.Application lifecycle ---------------------------------------------------------
 
@@ -156,6 +182,7 @@ class LiosApplication(Adw.Application):
         GLib.timeout_add_seconds(_EXPIRY_INTERVAL_SECONDS, self._on_expiry_timer)
         self._connect_to_relay_if_paired()
         self._request_autostart_if_not_yet_asked()
+        self._watch_for_stale_build()
 
     def _add_actions(self) -> None:
         for name, handler in (
@@ -212,6 +239,42 @@ class LiosApplication(Adw.Application):
             on_response=on_response,
         )
 
+    def _watch_for_stale_build(self) -> None:
+        connection = self.get_dbus_connection()
+        if connection is None:
+            return
+        updates.watch_for_stale_build(connection, on_stale=self._on_build_stale)
+
+    def _on_build_stale(self) -> None:
+        """A newer build is already installed than the one this process launched with (see
+        `portals.updates`). Nothing here can make quitting safe when it isn't -- an install
+        replacing files on disk is not something this app is ever consulted about -- so this
+        marks the window stale, if one exists and is currently open, so the user is told
+        rather than left looking at old code with no indication anything changed; either way
+        it quits the moment that stops being true (`_quit_if_stale_and_idle`)."""
+        self._stale_version = True
+        if self._window is not None:
+            self._window.set_stale_version(True)
+        self._quit_if_stale_and_idle()
+
+    def _quit_if_stale_and_idle(self) -> None:
+        """Exit the process once a newer build is already on disk and doing so now would
+        lose nothing -- the next `lios show`/`background` invocation starts a fresh process
+        running the current code (D-Bus activation restarts it; see `packaging/*.service`).
+
+        A window merely being hidden (never destroyed, see the module docstring) still counts
+        as "on screen" here, since it can be raised again in an instant -- checking
+        `get_visible()` rather than `self._window is None` is what keeps this from ever
+        pulling a window out from under someone who has it open.
+        """
+        window_visible = self._window is not None and self._window.get_visible()
+        if _should_quit_for_stale_build(
+            stale=self._stale_version,
+            inflight_sends=self._inflight_sends,
+            window_visible=window_visible,
+        ):
+            self.quit()
+
     def _on_expiry_timer(self) -> bool:
         self._history.expire(now=_now())
         if self._window is not None:
@@ -222,14 +285,28 @@ class LiosApplication(Adw.Application):
 
     def send_file(self, path: str) -> None:
         """Upload the file at `path` -- called by the window's paste, drop and file-picker
-        handlers, each of which already knows a concrete path."""
+        handlers, each of which already knows a concrete path.
+
+        Counted as in-flight from here (always called on the main thread, by those same
+        handlers) until the worker below finishes, so a build detected stale mid-send never
+        quits out from under it -- see `_quit_if_stale_and_idle`.
+        """
+        self._inflight_sends += 1
 
         def worker() -> None:
-            data = Path(path).read_bytes()
-            content_type, _uncertain = Gio.content_type_guess(path, data)
-            self.upload("file", data, filename=Path(path).name, content_type=content_type)
+            try:
+                data = Path(path).read_bytes()
+                content_type, _uncertain = Gio.content_type_guess(path, data)
+                self.upload("file", data, filename=Path(path).name, content_type=content_type)
+            finally:
+                GLib.idle_add(self._on_send_file_finished)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _on_send_file_finished(self) -> bool:
+        self._inflight_sends -= 1
+        self._quit_if_stale_and_idle()
+        return bool(GLib.SOURCE_REMOVE)
 
     def upload(
         self,
@@ -450,8 +527,12 @@ class LiosApplication(Adw.Application):
     def show_window(self) -> None:
         """Raise the window, creating it once on first use and reusing it afterwards.
 
-        With no pending item from a notification click, the window itself decides what "ready"
-        means -- focusing the send field and selecting the newest received item.
+        `LiosWindow.present_ready` is the single place that decides what "ready" means --
+        which view to show and, with no pending item from a notification click, focusing the
+        send field and selecting the newest received item -- redecided fresh on every call
+        rather than only at the handful of moments something changed, so a window shown after
+        sitting hidden through one of those changes never reopens still showing whatever was
+        true before it.
         """
         self._become_resident()
         if self._window is None:
@@ -459,18 +540,21 @@ class LiosApplication(Adw.Application):
 
             self._window = LiosWindow(application=self, history=self._history)
             self._window.connect("close-request", self._on_window_close_request)
-        if self._pending_item_id is not None:
-            self._window.select_item(self._pending_item_id)
-            self._pending_item_id = None
-        else:
-            self._window.focus_send_and_select_newest()
+        pending_item_id = self._pending_item_id
+        self._pending_item_id = None
+        self._window.present_ready(pending_item_id)
         self._window.present()
 
     def _on_window_close_request(self, window: Gtk.ApplicationWindow) -> bool:
         """Hide rather than destroy -- the process stays resident (`_become_resident()`
         already held it, since showing a window always goes through there first), and
-        reopening the same window is instant with its scroll position and selection intact."""
+        reopening the same window is instant with its scroll position and selection intact.
+
+        Also the other moment (besides detecting staleness itself) that a build found stale
+        while this window was open gets to actually quit -- see `_quit_if_stale_and_idle`.
+        """
         window.set_visible(False)
+        self._quit_if_stale_and_idle()
         return bool(Gdk.EVENT_STOP)
 
     # -- Config -------------------------------------------------------------------------------
