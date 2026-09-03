@@ -1,7 +1,39 @@
 import SwiftUI
 
+/// Owns nothing but *whether* `SettingsViewModel` exists yet — construction (a Keychain read
+/// among other things, see `SettingsViewModel.init`) happens exactly once, from `.task`, never
+/// from this view's own initialiser.
+///
+/// 🚨 An eager `@State private var viewModel = SettingsViewModel()` looks like it constructs once,
+/// but the default-value expression is an ordinary argument to `SettingsView.init()` — it runs
+/// every time something constructs a fresh `SettingsView()` value (every re-evaluation of
+/// whichever parent body places one, `RootView`'s `TabView` here), and only the *storage* `@State`
+/// preserves is exempt from being discarded. The construction itself, Keychain read included,
+/// still happens and is thrown away. The crash log caught exactly that: `SettingsViewModel.
+/// init()` on the main thread, blocked in `SecItemCopyMatching`, called from `SettingsView.init()`
+/// inside `RootView.body.getter`. An optional `@State` plus a `.task` guard is the standard fix —
+/// `.task` runs once per view identity, not once per parent body pass.
 struct SettingsView: View {
-    @State private var viewModel = SettingsViewModel()
+    @State private var viewModel: SettingsViewModel?
+
+    var body: some View {
+        Group {
+            if let viewModel {
+                SettingsForm(viewModel: viewModel)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            if viewModel == nil {
+                viewModel = SettingsViewModel()
+            }
+        }
+    }
+}
+
+private struct SettingsForm: View {
+    @Bindable var viewModel: SettingsViewModel
     @State private var showForgetConfirmation = false
 
     var body: some View {
