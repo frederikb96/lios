@@ -1,3 +1,4 @@
+import Foundation
 import LIOSKit
 import UniformTypeIdentifiers
 
@@ -106,8 +107,11 @@ enum AttachmentLoader {
             try assertSize(sizeAttribute)
             let payload = try Data(contentsOf: fileURL)
             let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType
-            return Loaded(
-                type: preferredType, filename: fileURL.lastPathComponent, mimeType: mimeType, payload: payload)
+            let filename =
+                sanitizeFilename(fileURL.lastPathComponent)
+                ?? sanitizedSuggestedFilename(provider.suggestedName, typeIdentifier: typeIdentifier)
+                ?? fallbackFilename(for: preferredType, typeIdentifier: typeIdentifier)
+            return Loaded(type: preferredType, filename: filename, mimeType: mimeType, payload: payload)
         }
 
         let payload = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
@@ -122,10 +126,51 @@ enum AttachmentLoader {
         }
         try assertSize(payload.count)
         let mimeType = UTType(typeIdentifier)?.preferredMIMEType
-        return Loaded(type: preferredType, filename: nil, mimeType: mimeType, payload: payload)
+        let filename =
+            sanitizedSuggestedFilename(provider.suggestedName, typeIdentifier: typeIdentifier)
+            ?? fallbackFilename(for: preferredType, typeIdentifier: typeIdentifier)
+        return Loaded(type: preferredType, filename: filename, mimeType: mimeType, payload: payload)
     }
 
     private static func assertSize(_ bytes: Int) throws {
         guard bytes <= maxPayloadBytes else { throw LoadError.tooLarge(bytes: bytes) }
+    }
+
+    /// A provider's suggested name, and a file URL's own last path component, both originate
+    /// with whatever app initiated the share — not this device. `filename` travels on the wire
+    /// and the receiving device writes it straight to disk as a path component, so anything that
+    /// reads as a directory separator, a traversal segment or a control character is stripped
+    /// before it ever leaves here. `nil` means "nothing usable survived," not "there was nothing
+    /// to clean."
+    private static func sanitizeFilename(_ raw: String) -> String? {
+        let lastComponent = (raw as NSString).lastPathComponent
+        let withoutControls = lastComponent.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+        let cleaned = String(String.UnicodeScalarView(withoutControls)).trimmingCharacters(in: .whitespaces)
+        guard !cleaned.isEmpty, cleaned != ".", cleaned != ".." else { return nil }
+        return String(cleaned.prefix(200))
+    }
+
+    /// `suggestedName` is often a bare name with no extension — appends one derived from the
+    /// item's own type identifier when the sanitized name doesn't already carry one, so the far
+    /// end still knows what kind of file it received.
+    private static func sanitizedSuggestedFilename(_ suggested: String?, typeIdentifier: String) -> String? {
+        guard let suggested, let cleaned = sanitizeFilename(suggested) else { return nil }
+        guard (cleaned as NSString).pathExtension.isEmpty else { return cleaned }
+        guard let ext = UTType(typeIdentifier)?.preferredFilenameExtension else { return cleaned }
+        return "\(cleaned).\(ext)"
+    }
+
+    /// Built when nothing else names the item — no suggested name, no file URL. Two shares
+    /// landing in the same minute must not collide, and a bare `<uuid>.bin` (what a raw `Data`
+    /// payload used to become downstream) gives a person nothing to recognise the file by.
+    private static func fallbackFilename(for type: ItemType, typeIdentifier: String) -> String {
+        let ext = UTType(typeIdentifier)?.preferredFilenameExtension ?? "bin"
+        let label = type == .image ? "Image" : "File"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let stamp = formatter.string(from: Date())
+        let disambiguator = String(UUID().uuidString.prefix(4)).lowercased()
+        return "\(label) \(stamp)-\(disambiguator).\(ext)"
     }
 }
