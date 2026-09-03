@@ -18,6 +18,11 @@ SEALED_PREVIEW_HEADER = "X-Sealed-Preview"
 #: `POST /api/items` query param narrowing delivery to one device.
 TARGET_DEVICE_ID_QUERY_PARAM = "target_device_id"
 
+#: `GET /api/items` query param switching the catch-up list from items the caller received
+#: to items the caller itself sent -- a device is never its own recipient, so this is a
+#: separate query rather than a wider version of the default one.
+SENT_QUERY_PARAM = "sent"
+
 #: Custom (non-`aps`) fields on the APNs payload `lios_relay.push` sends.
 PUSH_ITEM_ID_KEY = "item_id"
 PUSH_SENDER_DEVICE_ID_KEY = "sender_device_id"

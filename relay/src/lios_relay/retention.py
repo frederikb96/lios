@@ -3,7 +3,8 @@
 Runs on a timer for the lifetime of the process (started and stopped from `server.py`'s
 lifespan). Every pass prunes, in order: items past `retention.max_age_days` regardless of ack
 state, items beyond `retention.max_items` (oldest first, keeping the newest), items every
-snapshotted recipient has acked, and pairing sessions past their expiry.
+snapshotted recipient has acked *and* the sender has acked too, and pairing sessions past
+their expiry.
 """
 
 from __future__ import annotations
@@ -50,18 +51,34 @@ async def _prune_beyond_count(session: AsyncSession, max_items: int) -> int:
 
 
 async def _prune_fully_acked(session: AsyncSession) -> int:
-    """Delete every item whose full `ItemRecipient` snapshot has a matching `ItemAck`.
+    """Delete every item whose full `ItemRecipient` snapshot has a matching `ItemAck`, and
+    whose sender has acked it too.
+
+    The sender is deliberately excluded from its own item's `ItemRecipient` snapshot, so its
+    ack is a separate condition rather than something the snapshot check already covers -- a
+    sender that never comes back to ack its own upload keeps that item around (subject to
+    `max_age_days`/`max_items` regardless), which is what lets a device list what it sent
+    without the relay having already thrown it away.
 
     An item created with an empty recipient snapshot (the sender was the only paired device
-    at the time) is vacuously fully acked and would be deleted on the very next pass --
-    correct: nobody was ever waiting on it.
+    at the time) is vacuously fully acked by its recipients, but still waits on the sender's
+    own ack before this deletes it.
     """
     has_ack = select(ItemAck.item_id).where(
         ItemAck.item_id == ItemRecipient.item_id,
         ItemAck.device_id == ItemRecipient.device_id,
     )
-    unacked_item_ids = select(ItemRecipient.item_id).where(~has_ack.exists())
-    result = await session.execute(delete(Item).where(~Item.id.in_(unacked_item_ids)))
+    unacked_recipient_item_ids = select(ItemRecipient.item_id).where(~has_ack.exists())
+    sender_acked_item_ids = select(Item.id).join(
+        ItemAck,
+        (ItemAck.item_id == Item.id) & (ItemAck.device_id == Item.sender_device_id),
+    )
+    result = await session.execute(
+        delete(Item).where(
+            ~Item.id.in_(unacked_recipient_item_ids),
+            Item.id.in_(sender_acked_item_ids),
+        )
+    )
     return cast(CursorResult, result).rowcount or 0
 
 

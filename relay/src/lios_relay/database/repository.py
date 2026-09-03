@@ -186,6 +186,22 @@ async def list_items_since(
     return list(result.scalars().all())
 
 
+async def list_sent_items_since(
+    session: AsyncSession, since: datetime, device_id: uuid.UUID
+) -> list[Item]:
+    """Every item `device_id` itself sent, created strictly after `since`, oldest first.
+
+    Not joined against `ItemRecipient` -- a sender is deliberately excluded from its own
+    item's recipient snapshot, so this reads straight off `Item.sender_device_id` instead.
+    """
+    result = await session.execute(
+        select(Item)
+        .where(Item.sender_device_id == device_id, Item.created_at > since)
+        .order_by(Item.created_at)
+    )
+    return list(result.scalars().all())
+
+
 async def ack_item(session: AsyncSession, item_id: uuid.UUID, device_id: uuid.UUID) -> None:
     """Record that `device_id` has taken `item_id`. Idempotent -- acking twice is a no-op."""
     existing = await session.get(ItemAck, {"item_id": item_id, "device_id": device_id})

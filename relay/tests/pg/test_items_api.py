@@ -11,6 +11,7 @@ from lios_protocol.crypto import generate_group_key, seal
 from lios_protocol.headers import (
     ITEM_ID_HEADER,
     SEALED_PREVIEW_HEADER,
+    SENT_QUERY_PARAM,
     TARGET_DEVICE_ID_QUERY_PARAM,
 )
 
@@ -216,6 +217,50 @@ async def test_catch_up_list_never_includes_the_senders_own_broadcast(
     # Confirm it isn't just filtered by "since" -- the recipient (phone) still sees it.
     listed_by_phone = await client.get("/api/items", headers=auth_headers(phone_token))
     assert created["id"] in [item["id"] for item in listed_by_phone.json()]
+
+
+async def test_sent_query_returns_what_the_device_itself_sent(
+    client: AsyncClient, laptop_token: str, phone_token: str,
+) -> None:
+    """`sent=true` is a separate query, not a widening of the default one -- the default
+    list keeps excluding the sender's own item exactly as before."""
+    created = await _post_item(client, laptop_token, b"my own upload")
+
+    sent_by_laptop = await client.get(
+        "/api/items", headers=auth_headers(laptop_token), params={SENT_QUERY_PARAM: "true"},
+    )
+    assert sent_by_laptop.status_code == 200
+    assert created["id"] in [item["id"] for item in sent_by_laptop.json()]
+
+    default_for_laptop = await client.get("/api/items", headers=auth_headers(laptop_token))
+    assert created["id"] not in [item["id"] for item in default_for_laptop.json()]
+
+    sent_by_phone = await client.get(
+        "/api/items", headers=auth_headers(phone_token), params={SENT_QUERY_PARAM: "true"},
+    )
+    assert created["id"] not in [item["id"] for item in sent_by_phone.json()]
+
+
+async def test_sent_query_respects_since(client: AsyncClient, laptop_token: str) -> None:
+    first = await _post_item(client, laptop_token, b"first sent item")
+
+    listed = await client.get(
+        "/api/items", headers=auth_headers(laptop_token),
+        params={SENT_QUERY_PARAM: "true", "since": first["created_at"]},
+    )
+    assert first["id"] not in [item["id"] for item in listed.json()]
+
+
+async def test_a_sender_can_ack_its_own_item(
+    client: AsyncClient, laptop_token: str,
+) -> None:
+    """The ack endpoint accepts any authenticated device, sender included -- what lets a
+    device that lists its own sent items also drop them once recorded locally."""
+    created = await _post_item(client, laptop_token, b"ack my own upload")
+    resp = await client.delete(
+        f"/api/items/{created['id']}", headers=auth_headers(laptop_token)
+    )
+    assert resp.status_code == 204
 
 
 async def test_catch_up_list_only_reaches_the_targeted_device(

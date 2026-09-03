@@ -10,8 +10,9 @@ Base URL is whatever the relay is deployed at (`http://localhost:8080` in dev, `
 
   Returns `ItemCreated` (`201`).
 - **`GET /api/items/{id}`** -- fetch one item's sealed blob, raw (`application/octet-stream`). `404` if it does not exist (never existed, or already pruned).
-- **`GET /api/items?since=<ISO 8601 timestamp>`** -- catch-up list of `ItemSummary` (clear metadata only -- id, sender, target, size, created_at; never the blob) created strictly after `since`. This is how a client that was offline finds out what it missed.
-- **`DELETE /api/items/{id}`** -- a device acknowledging it has taken an item. Idempotent, and a no-op (still `204`) for an item that no longer exists. An item is deleted early, before its retention window expires, once every device in its recipient snapshot has acked it.
+- **`GET /api/items?since=<ISO 8601 timestamp>`** -- catch-up list of `ItemSummary` (clear metadata only -- id, sender, target, size, created_at; never the blob) created strictly after `since`. This is how a client that was offline finds out what it missed. Never includes an item the caller itself sent -- a device is not its own recipient.
+- **`GET /api/items?since=<...>&sent=true`** -- the same catch-up shape, but items the caller itself sent rather than items it received, still filtered by `since`. A separate, opt-in query rather than a wider version of the default one, since a device sending its own upload back to itself would defeat the point of the default list excluding it.
+- **`DELETE /api/items/{id}`** -- a device acknowledging it has taken an item. Idempotent, and a no-op (still `204`) for an item that no longer exists. Any authenticated device can ack any item, including its own sender. An item is deleted early, before its retention window expires, once every device in its recipient snapshot has acked it *and* its sender has acked it too -- a sender that never acks its own upload keeps it around (still subject to `retention.max_age_days`/`max_items`), which is what lets `GET /api/items?sent=true` still find it.
 
 ## Stream
 

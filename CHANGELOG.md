@@ -9,13 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The relay's item listing accepts a `sent=true` query, returning items the calling device
+  itself sent instead of items it received -- a separate query from the default catch-up
+  list, which keeps excluding a device's own uploads exactly as before. The relay also keeps
+  an item around until its sender has acked it too, not only its recipients, so a device can
+  still find its own upload through the new query before recording it locally.
 - The Linux client's pairing dialog shows the pairing link as selectable text with a copy
   button next to the QR code, alongside a warning that anyone who reads that text or the
   clipboard history it lands in can read everything sent as this device until the whole fleet
   is re-paired -- the key it carries never expires and cannot be rotated.
 - The iOS invite sheet shows the same pairing link as selectable text with a copy button next
   to the QR code, for a device with no camera to scan it, with the same warning about what the
-  text exposes. The join screen now also accepts a pasted link, feeding the same redeem path
+  text exposes. The join screen also accepts a pasted link, feeding the same redeem path
   scanning already uses.
 
 ### Fixed

@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER
+from lios_protocol.headers import ITEM_ID_HEADER, SEALED_PREVIEW_HEADER, SENT_QUERY_PARAM
 from lios_protocol.wire import ItemCreated, ItemSummary, StreamEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,7 @@ from lios_relay.database.repository import (
     get_item,
     list_items_since,
     list_other_device_ids,
+    list_sent_items_since,
 )
 from lios_relay.push import PushUnavailable, send_new_item_push
 from lios_relay.server_state import get_broadcaster, get_session
@@ -226,9 +227,24 @@ async def list_items_endpoint(
         description="Return items created strictly after this timestamp -- the catch-up list "
         "for a client that was offline while the stream was announcing new items.",
     ),
+    sent: bool = Query(
+        default=False,
+        alias=SENT_QUERY_PARAM,
+        description="Return items this device itself sent instead of items it is a "
+        "recipient of. A device is never its own recipient, so this is a separate query, "
+        "not a wider version of the default one -- the default list is unaffected either "
+        "way.",
+    ),
 ) -> list[ItemSummary]:
-    """Catch-up list: every item the caller is a recipient of, created after `since`."""
-    items = await list_items_since(session, since, device.id)
+    """Catch-up list: by default, every item the caller is a recipient of, created after
+    `since`. With `sent=true`, every item the caller itself sent instead, created after
+    `since` -- a device's own uploads, which the default list never includes.
+    """
+    items = (
+        await list_sent_items_since(session, since, device.id)
+        if sent
+        else await list_items_since(session, since, device.id)
+    )
     return [_item_summary(item) for item in items]
 
 
