@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-09-03
+## [0.1.5] - 2026-09-03
 
 ### Added
 
 - Release tags attach a prebuilt `.flatpak` bundle of the Linux client, built by the release
   workflow rather than by hand -- see the root README for installing it.
+
+## [0.1.4] - 2026-09-03
+
+### Added
+
 - The relay's item listing accepts a `sent=true` query, returning items the calling device
   itself sent instead of items it received -- a separate query from the default catch-up
   list, which keeps excluding a device's own uploads exactly as before. The relay also keeps
