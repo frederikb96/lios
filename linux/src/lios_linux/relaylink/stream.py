@@ -12,6 +12,11 @@ only ever asks for the current answer, right when it is about to use it.
 Reconnects with `relaylink.backoff`'s schedule on any disconnect -- server-initiated or not,
 never a reason to stop trying.
 
+`_catch_up` runs its REST call on a worker thread and hops back to the main loop via
+`GLib.idle_add` before calling `on_item`, matching `app.py`'s own rule that only the main loop
+may touch GTK/history state -- `_on_connected` (and so `_catch_up`) fires on the GTK main loop,
+and `rest.list_items_since` blocks the calling thread until the response arrives.
+
 🚨 Unverified against a live relay or a real `Soup.Session`: `websocket_connect_async`'s exact
 PyGObject argument order (message, origin, protocols, io_priority, cancellable, callback) is
 written from the libsoup3 C API and could not be exercised in this headless environment, with
@@ -21,12 +26,14 @@ shipping.
 Untestable end to end in this environment without a running relay to connect to. `_on_message`
 itself is an exception -- it needs only a real `GLib.Bytes` and `Soup.WebsocketDataType`, no
 socket at all, and is unit-tested directly against those; likewise `_catch_up`, driven by a
-fake `Soup.Session`-shaped object rather than a real connection.
+fake `Soup.Session`-shaped object rather than a real connection and a couple of iterations of
+the real `GLib.MainContext` to let its worker thread's `idle_add` land.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -114,20 +121,34 @@ class StreamConnection:
 
     def _catch_up(self) -> None:
         """Pull everything created since the current watermark -- whatever was missed,
-        however long the gap was or however it came about."""
+        however long the gap was or however it came about.
+
+        The watermark itself is read here, on the caller's thread (the GTK main loop), since
+        `get_catch_up_since` reaches into history state; the REST call that follows is the
+        slow part and runs on a worker thread instead, so a connect or reconnect never leaves
+        the main loop blocked on the network.
+        """
         since = self._get_catch_up_since()
-        try:
-            items = rest.list_items_since(
-                self._session,
-                relay_url=self._relay_url,
-                device_token=self._device_token,
-                since=since,
-            )
-        except rest.RelayError as exc:
-            logger.warning("relay catch-up list failed: %s", exc)
-            return
+
+        def worker() -> None:
+            try:
+                items = rest.list_items_since(
+                    self._session,
+                    relay_url=self._relay_url,
+                    device_token=self._device_token,
+                    since=since,
+                )
+            except rest.RelayError as exc:
+                logger.warning("relay catch-up list failed: %s", exc)
+                return
+            GLib.idle_add(self._deliver_catch_up_items, items)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _deliver_catch_up_items(self, items: list[ItemSummary]) -> bool:
         for item in items:
             self._on_item(item)
+        return bool(GLib.SOURCE_REMOVE)
 
     def _on_message(
         self,

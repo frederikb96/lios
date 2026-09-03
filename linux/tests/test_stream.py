@@ -7,17 +7,24 @@ why the failure repeated on every keepalive too, since the ping check ran after 
 conversion.
 
 Also covers `_catch_up`: it must ask its `get_catch_up_since` callback for "since" at the
-moment it runs, not use a value captured earlier, and it must dispatch every item the list
-returns -- the watermark itself never regressing is `HistoryStore`'s own job and is tested in
-`tests/test_history_watermark.py`.
+moment it runs, not use a value captured earlier, it must dispatch every item the list returns
+-- the watermark itself never regressing is `HistoryStore`'s own job and is tested in
+`tests/test_history_watermark.py` -- and it must never block the caller on the REST call
+itself, since that caller is the GTK main loop.
 
 Needs no socket and no running relay: `_on_message` only touches a real `GLib.Bytes` and a
 `Soup.WebsocketDataType` value, both constructible headless, and `_catch_up` is driven by a
 fake `Soup.Session`-shaped object that returns canned JSON instead of making a real request.
+Its delivery runs on a worker thread and lands back via `GLib.idle_add`, so the catch-up tests
+pump the real default `GLib.MainContext` to observe it rather than reading `on_item` straight
+after the call returns.
 """
 
 from __future__ import annotations
 
+import threading
+import time
+from collections.abc import Callable
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +37,23 @@ from gi.repository import GLib, Soup  # noqa: E402
 from lios_protocol.wire import ItemSummary  # noqa: E402
 
 from lios_linux.relaylink.stream import StreamConnection  # noqa: E402
+
+
+def _pump_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> None:
+    """Iterate the default `GLib.MainContext` until `predicate()` is true, or raise.
+
+    Stands in for the real GTK main loop for tests that need a worker thread's
+    `GLib.idle_add` callback to actually run.
+    """
+    deadline = time.monotonic() + timeout
+    context = GLib.MainContext.default()
+    while time.monotonic() < deadline:
+        while context.pending():
+            context.iteration(False)
+        if predicate():
+            return
+        time.sleep(0.005)
+    raise AssertionError("condition not met within timeout")
 
 _ITEM_JSON = (
     b'{"type":"item.new","item":{'
@@ -111,6 +135,7 @@ def test_catch_up_asks_for_the_watermark_at_call_time_not_construction_time() ->
 
     watermark["since"] = "2026-09-03T14:30:00+00:00"
     connection._catch_up()
+    _pump_until(lambda: bool(fake_session.requested_urls))
 
     query = parse_qs(urlparse(fake_session.requested_urls[0]).query)
     assert query["since"] == ["2026-09-03T14:30:00+00:00"]
@@ -128,6 +153,33 @@ def test_catch_up_dispatches_every_item_the_list_returns() -> None:
     )
 
     connection._catch_up()
+    _pump_until(lambda: bool(received))
 
     assert len(received) == 1
     assert str(received[0].id) == "33333333-3333-3333-3333-333333333333"
+
+
+def test_catch_up_returns_before_the_rest_call_completes() -> None:
+    """The REST call runs on a worker thread -- `_catch_up` itself must return long before a
+    slow relay response arrives, since its caller is the GTK main loop."""
+    release = threading.Event()
+
+    class _BlockingSession:
+        def send_and_read(self, message: Soup.Message, _cancellable: object) -> GLib.Bytes:
+            release.wait(timeout=2.0)
+            return GLib.Bytes.new(b"[]")
+
+    connection = StreamConnection(
+        relay_url="https://example.invalid",
+        device_token="token",
+        session=_BlockingSession(),
+        on_item=lambda _item: None,
+        get_catch_up_since=lambda: datetime.fromisoformat("2026-09-03T00:00:00+00:00"),
+    )
+
+    started = time.monotonic()
+    connection._catch_up()
+    elapsed = time.monotonic() - started
+
+    release.set()
+    assert elapsed < 0.5

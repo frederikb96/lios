@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Linux client's window froze for as long as the relay's catch-up list took to arrive on
+  every connect and reconnect, since the request ran on the same loop that draws the window.
+  The request now runs on a worker thread, leaving the window responsive throughout.
 - Sharing a file from an app that offers only raw data -- with no name attached -- sent it
   with no filename at all, leaving the receiving device nothing to save it as. The share
   extension now takes the name the share sheet suggests where there is one, generates one
