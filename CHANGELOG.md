@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-03
+
 ### Fixed
 
 - The relay's live stream announced every new item to every connected device, including the
