@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Linux client's keyring lookup folded an unreachable Secret Service and a locked
+  collection into the same "nothing stored" result as a device that had genuinely never
+  paired, offering to re-claim the relay as a brand-new first device on the strength of
+  either. It now tells the three apart, corroborates against local history (a device holding
+  received items has certainly paired before), and only ever offers to unlock or retry when
+  the keyring itself is the problem.
+
 ## [0.1.2] - 2026-09-03
 
 ### Changed

@@ -159,6 +159,13 @@ class HistoryStore:
             for row in rows
         ]
 
+    def has_any(self) -> bool:
+        """Whether any row currently exists -- cheaper than `list_recent()` when the caller
+        only needs to know whether history is empty, not its contents."""
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
+        return row is not None
+
     def get_catch_up_since(self) -> datetime | None:
         """The relay timestamp of the newest item this device has successfully received,
         persisted across restarts -- the watermark the next `/api/stream` catch-up resumes

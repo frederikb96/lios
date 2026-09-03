@@ -34,6 +34,7 @@ from lios_linux.portals import notifications  # noqa: E402
 from lios_linux.relaylink import pairing_flow  # noqa: E402
 from lios_linux.relaylink.rest import RelayError  # noqa: E402
 from lios_linux.ui.history_row import HistoryRow  # noqa: E402
+from lios_linux.ui.keyring_unavailable_view import KeyringUnavailableView  # noqa: E402
 from lios_linux.ui.onboarding import OnboardingView  # noqa: E402
 from lios_linux.ui.pairing_view import QrCodeWidget  # noqa: E402
 from lios_linux.ui.preferences import LiosPreferencesDialog  # noqa: E402
@@ -47,9 +48,13 @@ logger = logging.getLogger(__name__)
 class LiosWindow(Adw.ApplicationWindow):
     """The one window this application ever shows.
 
-    Its content is one of two things, decided fresh every time the window is shown (not just
-    once at construction, since pairing can complete while the window happens to be closed):
-    `OnboardingView` if `keyring.is_paired()` is false, the history list otherwise.
+    Its content is decided fresh every time the window is shown (not just once at
+    construction, since pairing can complete while the window happens to be closed), from
+    `keyring.pairing_status()` folded through `keyring.resolve_pairing_status()`: the history
+    list once paired, `OnboardingView` once confirmed not paired, and `KeyringUnavailableView`
+    whenever the keyring cannot currently say which -- never the onboarding view on the
+    strength of an error, since its "claim this relay" path is destructive if this device
+    was in fact already paired.
     """
 
     def __init__(self, *, application: Any, history: HistoryStore) -> None:
@@ -108,13 +113,21 @@ class LiosWindow(Adw.ApplicationWindow):
         return cast("LiosApplication", self.get_application())
 
     def refresh(self) -> None:
-        """Show onboarding or the history list, whichever now applies, and reload either way.
+        """Show whichever of history, onboarding or "can't reach the keyring" now applies,
+        and reload either way.
 
-        Called on show, after pairing completes, and whenever history changes.
+        Called on show, after pairing completes, whenever history changes, and after a
+        keyring unlock attempt from `KeyringUnavailableView`.
         """
-        if keyring.is_paired():
+        status = keyring.resolve_pairing_status(
+            keyring.pairing_status(), history_has_items=self._history.has_any()
+        )
+        if status is keyring.PairingStatus.PAIRED:
             self._toolbar_view.set_content(self._history_content)
             self._reload_history()
+        elif status is keyring.PairingStatus.UNAVAILABLE:
+            unavailable = KeyringUnavailableView(on_retry=self.refresh)
+            self._toolbar_view.set_content(unavailable.widget)
         else:
             onboarding = OnboardingView(app=self.get_application(), on_paired=self._on_paired)
             self._toolbar_view.set_content(onboarding.widget)
@@ -324,7 +337,10 @@ class LiosWindow(Adw.ApplicationWindow):
         notification with no particular item: the send field has focus, and the newest
         received item is selected, so shortcut-then-copy is a complete receive with no
         mouse."""
-        if not keyring.is_paired():
+        status = keyring.resolve_pairing_status(
+            keyring.pairing_status(), history_has_items=self._history.has_any()
+        )
+        if status is not keyring.PairingStatus.PAIRED:
             return
         self._entry.grab_focus()
         newest_row = self._list_box.get_row_at_index(0)

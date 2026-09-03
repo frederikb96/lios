@@ -1,10 +1,11 @@
 """The first-run view: claim a fresh relay as its first device, or join one that already has
 a device by pasting the pairing link it shows.
 
-Shown instead of the history list until `lios_linux.keyring.is_paired()` is true. A relay
-answers `POST /api/devices/bootstrap` with 403 the moment any device already exists, so
-"claim" only ever works once per relay -- the fallback is always available and explained
-rather than left as a dead end.
+Shown once `lios_linux.keyring.pairing_status()` has confirmed this device has never paired
+(never on the strength of a keyring the app merely couldn't read -- see
+`lios_linux.ui.keyring_unavailable_view`). A relay answers `POST /api/devices/bootstrap` with
+403 the moment any device already exists, so "claim" only ever works once per relay -- the
+fallback is always available and explained rather than left as a dead end.
 
 Untestable in this environment: needs a live display connection.
 """
@@ -23,6 +24,7 @@ gi.require_version("GLib", "2.0")
 
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from lios_linux import keyring  # noqa: E402
 from lios_linux.relaylink import pairing_flow  # noqa: E402
 from lios_linux.relaylink.rest import RelayError  # noqa: E402
 
@@ -88,6 +90,9 @@ class OnboardingView:
                 pairing_flow.start_first_device(
                     relay_url=self._app.config.relay_url, session=self._app.soup_session
                 )
+            except keyring.KeyringUnavailable as exc:
+                GLib.idle_add(self._on_keyring_unavailable, str(exc))
+                return
             except RelayError as exc:
                 GLib.idle_add(self._on_claim_failed, str(exc))
                 return
@@ -100,6 +105,14 @@ class OnboardingView:
         self._status_label.set_label(
             "This relay already has a device paired -- paste a pairing link from it above, "
             "instead of claiming it."
+        )
+        return bool(GLib.SOURCE_REMOVE)
+
+    def _on_keyring_unavailable(self, message: str) -> bool:
+        logger.warning("cannot store credentials: %s", message)
+        self._status_label.set_label(
+            f"Could not store your credentials in the system keyring: {message}. Unlock "
+            "your keyring and try again."
         )
         return bool(GLib.SOURCE_REMOVE)
 

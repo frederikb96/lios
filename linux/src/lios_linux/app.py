@@ -174,6 +174,9 @@ class LiosApplication(Adw.Application):
             device_token = keyring.load_device_token()
         except keyring.SecretNotFound:
             return
+        except keyring.KeyringUnavailable as exc:
+            logger.warning("cannot connect to the relay yet: %s", exc)
+            return
         self._stream = StreamConnection(
             relay_url=self.config.relay_url,
             device_token=device_token,
@@ -239,6 +242,9 @@ class LiosApplication(Adw.Application):
             device_token = keyring.load_device_token()
         except keyring.SecretNotFound:
             logger.warning("cannot send: this device has not paired yet")
+            return
+        except keyring.KeyringUnavailable as exc:
+            logger.warning("cannot send: %s", exc)
             return
         item_id = str(uuid.uuid4())
         sealed = item_codec.build_sealed_item(

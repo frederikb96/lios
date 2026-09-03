@@ -47,6 +47,20 @@ def test_blob_path_returns_none_for_a_text_item_with_no_blob(store: HistoryStore
     assert store.blob_path("abc") is None
 
 
+def test_has_any_is_false_for_an_empty_store(store: HistoryStore) -> None:
+    assert store.has_any() is False
+
+
+def test_has_any_is_true_once_something_is_added(store: HistoryStore) -> None:
+    item = HistoryItem(
+        id="abc", direction=Direction.INCOMING, kind=ItemKind.TEXT, preview="hi",
+        filename=None, content_type=None, size_bytes=2, created_at=datetime.now(UTC),
+    )
+    store.add(item, blob=None)
+
+    assert store.has_any() is True
+
+
 def test_blob_path_returns_the_written_file_for_an_image(store: HistoryStore) -> None:
     item = HistoryItem(
         id="abc", direction=Direction.INCOMING, kind=ItemKind.IMAGE, preview="photo.png",

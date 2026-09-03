@@ -42,10 +42,16 @@ def start_first_device(*, relay_url: str, session: Soup.Session) -> None:
     token, and only while the device registry is empty; every later device joins through
     :func:`redeem_pairing_qr` instead.
 
+    Checks that storing a credential would actually persist before making that one-shot call
+    at all -- discovering a storage problem only afterwards would waste it.
+
     Raises:
+        keyring.KeyringUnavailable: storing a credential right now would not durably
+            succeed. Raised before the relay is ever contacted.
         relaylink.rest.RelayError: a device is already registered (this is not the first
             device), or the call otherwise failed.
     """
+    keyring.ensure_storage_ready()
     paired = rest.bootstrap_first_device(session, relay_url=relay_url, display_name=_DISPLAY_NAME)
     keyring.store_device_token(paired.device_token)
     keyring.store_group_key(generate_group_key())
@@ -73,14 +79,18 @@ def redeem_pairing_qr(*, uri: str, session: Soup.Session) -> None:
     """From a new device: decode a scanned (or typed) QR URI and complete pairing.
 
     Stores the device token and the group key in the Secret Service on success. Never partial:
-    if the relay call fails, nothing is written.
+    if the relay call fails, nothing is written. Checks that storing would actually persist
+    before consuming the pairing code at all, same reasoning as `start_first_device`.
 
     Raises:
         ValueError: `uri` is not a well-formed LIOS pairing URI.
+        keyring.KeyringUnavailable: storing a credential right now would not durably
+            succeed. Raised before the relay is ever contacted.
         relaylink.rest.RelayError: the relay rejected the code (expired, already redeemed, or
             never existed) or the call otherwise failed.
     """
     payload: PairingPayload = decode_qr_uri(uri)
+    keyring.ensure_storage_ready()
     paired = rest.pair_device(
         session,
         relay_url=payload.relay_url,
