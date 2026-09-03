@@ -2,10 +2,12 @@
 
 `lios` (or `lios show`, equivalently) is the entry point any desktop's own keybinding settings
 bind to raise the resident app's window, focused and ready to paste. `lios background` is the
-other resident-triggering command -- used only by the D-Bus service file and the autostart
-command registered with the Background portal, both of which must bring the app up and keep it
-running WITHOUT drawing a window; it never needs a user's own keybinding, so it is hidden from
-`--help`. A second invocation's argv is forwarded to the running primary instance by
+other resident-triggering command: it brings the app up and keeps it running without ever
+drawing a window, which is what the D-Bus service file and the autostart command registered
+with the Background portal both invoke. Nobody needs to type it by hand, but anyone writing
+their own autostart entry or systemd unit against this app has a legitimate reason to know it
+exists, so it stays in `--help` with the rest. A second invocation's argv is forwarded to the
+running primary instance by
 `Gio.Application` (`G_APPLICATION_HANDLES_COMMAND_LINE`) and parsed again there, in `app.py`'s
 `do_command_line`; this module only defines the grammar, with no application object in scope,
 so it is fully unit-testable without a display.
@@ -54,8 +56,10 @@ def parse(argv: list[str]) -> Command:
 
     subparsers.add_parser("show", help="Show the LIOS window")
 
-    # Internal: not something a user ever types or binds, so it stays out of --help.
-    subparsers.add_parser("background", help=argparse.SUPPRESS)
+    subparsers.add_parser(
+        "background",
+        help="Come up and stay resident with no window (used by autostart, not by a person)",
+    )
 
     args = parser.parse_args(argv)
 
