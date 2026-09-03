@@ -51,7 +51,7 @@ gi.require_version("Soup", "3.0")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Soup  # noqa: E402
 from lios_protocol.wire import ItemSummary  # noqa: E402
 
-from lios_linux import cli, keyring  # noqa: E402
+from lios_linux import cli, downloads, keyring  # noqa: E402
 from lios_linux.clipboard import gdk  # noqa: E402
 from lios_linux.config import AppConfig  # noqa: E402
 from lios_linux.history.models import Direction, HistoryItem, ItemKind  # noqa: E402
@@ -488,9 +488,18 @@ class LiosApplication(Adw.Application):
             return
         # `None` if XDG user dirs are unconfigured -- falls back to ~/Downloads rather than
         # failing the save outright.
-        downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
-        downloads_dir = Path(downloads) if downloads else Path.home() / "Downloads"
-        target = downloads_dir / (item.filename or f"{item_id}.bin")
+        special_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+        downloads_dir = Path(special_dir) if special_dir else Path.home() / "Downloads"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        # A local timestamp, like every other date this app shows a person.
+        target = downloads.unique_path(
+            downloads_dir,
+            downloads.save_name(
+                filename=item.filename,
+                content_type=item.content_type,
+                now=datetime.now(),
+            ),
+        )
         target.write_bytes(blob_path.read_bytes())
 
     # -- Pairing ------------------------------------------------------------------------------

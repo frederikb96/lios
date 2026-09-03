@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Saving a received file on Linux wrote it under the item's identifier with a `.bin`
+  extension whenever the sender supplied no name, ignoring the MIME type that says exactly
+  what the file is. The name is now the sender's own where there is one, and otherwise a
+  timestamp carrying the extension the type implies. A name a sender supplies is reduced to a
+  single path component before it is joined to the downloads directory, and a save no longer
+  overwrites an existing file of the same name.
 - The Linux client kept running the build it launched with after a newer one was installed
   over it, since replacing files on disk never touches an already-running process's own
   mounted view of them -- so reopening the window after an update could still show old code
