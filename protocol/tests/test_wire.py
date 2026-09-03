@@ -43,14 +43,14 @@ def test_stream_event_defaults_type() -> None:
 
 def test_device_info_round_trips_through_json() -> None:
     device = DeviceInfo(
-        id=uuid4(), display_name="the user's Laptop", platform="linux",
+        id=uuid4(), display_name="A Linux laptop", platform="linux",
         created_at=datetime.now(UTC), has_push_token=False,
     )
     assert DeviceInfo.model_validate_json(device.model_dump_json()) == device
 
 
 def test_pairing_redeem_accepts_platform_literal() -> None:
-    redeem = PairingRedeem(pairing_code="ABCD1234", platform="ios", display_name="the user's iPhone")
+    redeem = PairingRedeem(pairing_code="ABCD1234", platform="ios", display_name="An iPhone")
     assert redeem.platform == "ios"
 
 
