@@ -214,6 +214,8 @@ class LiosApplication(Adw.Application):
 
     def _on_expiry_timer(self) -> bool:
         self._history.expire(now=_now())
+        if self._window is not None:
+            self._window.notify_history_changed()
         return bool(GLib.SOURCE_CONTINUE)
 
     # -- Sending ------------------------------------------------------------------------------
@@ -293,6 +295,8 @@ class LiosApplication(Adw.Application):
             ),
             blob=payload,
         )
+        if self._window is not None:
+            self._window.notify_history_changed()
 
     # -- Receiving ----------------------------------------------------------------------------
 
@@ -357,6 +361,8 @@ class LiosApplication(Adw.Application):
             ),
             blob=decoded.payload,
         )
+        if self._window is not None:
+            self._window.notify_history_changed()
         notification = notifications.build_item_arrived_notification(
             item_id, kind=decoded.kind, filename=decoded.filename
         )

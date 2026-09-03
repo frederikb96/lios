@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Linux client's history list only rebuilt itself on construction, after pairing, or
+  when a notification for an item it didn't already know about was clicked -- so opening the
+  window any other way (a shortcut, or simply reopening it) showed whatever was true the last
+  time one of those had happened, and an item arriving while the window was already open
+  didn't appear either. Reopening the window now always reloads the list, and the
+  application tells the window directly whenever an item arrives or expires.
 - The Linux client's keyring lookup folded an unreachable Secret Service and a locked
   collection into the same "nothing stored" result as a device that had genuinely never
   paired, offering to re-claim the relay as a brand-new first device on the strength of

@@ -116,8 +116,11 @@ class LiosWindow(Adw.ApplicationWindow):
         """Show whichever of history, onboarding or "can't reach the keyring" now applies,
         and reload either way.
 
-        Called on show, after pairing completes, whenever history changes, and after a
-        keyring unlock attempt from `KeyringUnavailableView`.
+        Called at construction, after pairing completes, and after a keyring unlock attempt
+        from `KeyringUnavailableView` -- the pairing status itself can only change at those
+        moments. A history change alone does not call this: see `notify_history_changed`,
+        `select_item` and `focus_send_and_select_newest` for what keeps the list itself
+        correct on every other occasion.
         """
         status = keyring.resolve_pairing_status(
             keyring.pairing_status(), history_has_items=self._history.has_any()
@@ -316,6 +319,15 @@ class LiosWindow(Adw.ApplicationWindow):
     # -- History list, and being made "ready" from the outside --------------------------------
 
     def _reload_history(self) -> None:
+        """Rebuild every row from `self._history` -- the one place that does, so every
+        caller (construction, pairing, a notification click, a live history change, or the
+        window simply being raised) ends up with the same rebuild rather than each patching
+        the list its own way. Preserves the current selection across the rebuild if the
+        selected item is still present, since callers other than the original ones now
+        trigger this far more often -- an item arriving should not silently drop whatever
+        the user had selected to copy or save."""
+        selected = self._list_box.get_selected_row()
+        selected_id = selected.item_id if isinstance(selected, HistoryRow) else None
         while (child := self._list_box.get_first_child()) is not None:
             self._list_box.remove(child)
         self._rows.clear()
@@ -323,6 +335,22 @@ class LiosWindow(Adw.ApplicationWindow):
             row = HistoryRow(item)
             self._rows[item.id] = row
             self._list_box.append(row)
+        if selected_id is not None and (restored := self._rows.get(selected_id)) is not None:
+            self._list_box.select_row(restored)
+
+    def notify_history_changed(self) -> None:
+        """The application calls this whenever an item is added or expired, regardless of
+        whether this window is currently open -- it is otherwise never told, and its list
+        would then reflect only whatever was true the last time it happened to be shown.
+
+        Reloads immediately if the window is visible, since that is exactly when someone
+        could be looking at a now-stale list. A hidden window does nothing here: it is
+        brought up to date the next time it is shown instead (`select_item` /
+        `focus_send_and_select_newest`), so an item arriving while nobody is looking never
+        pays for a rebuild that has no observer.
+        """
+        if self.get_visible():
+            self._reload_history()
 
     def select_item(self, item_id: str) -> None:
         """Scroll to and select the row for `item_id`, refreshing first if not yet shown."""
@@ -336,12 +364,18 @@ class LiosWindow(Adw.ApplicationWindow):
         """Ready the instant the window appears, whether raised by a shortcut or a
         notification with no particular item: the send field has focus, and the newest
         received item is selected, so shortcut-then-copy is a complete receive with no
-        mouse."""
+        mouse.
+
+        Reloads history first -- this is the path a shortcut or a plain reopen takes, and
+        unlike `select_item` it has no specific item to check for absence, so a stale list
+        would otherwise go unnoticed until something else happened to trigger a rebuild.
+        """
         status = keyring.resolve_pairing_status(
             keyring.pairing_status(), history_has_items=self._history.has_any()
         )
         if status is not keyring.PairingStatus.PAIRED:
             return
+        self._reload_history()
         self._entry.grab_focus()
         newest_row = self._list_box.get_row_at_index(0)
         if newest_row is not None:
