@@ -17,10 +17,12 @@ final class LiosItemTests: XCTestCase {
             id: sealed.id, senderDeviceId: UUID(), targetDeviceId: nil, sizeBytes: sealed.sizeBytes,
             createdAt: Date())
 
-        let opened = try LiosItem.open(summary: summary, sealedBlob: sealed.blob, groupKey: groupKey)
+        let opened = try LiosItem.open(
+            summary: summary, sealedBlob: sealed.blob, groupKey: groupKey, direction: .received)
         XCTAssertEqual(opened.type, .text)
         XCTAssertEqual(opened.payload, payload)
         XCTAssertNil(opened.filename)
+        XCTAssertEqual(opened.direction, .received)
     }
 
     func testSealThenOpenRoundTripsAFileItemWithMetadata() throws {
@@ -34,10 +36,12 @@ final class LiosItemTests: XCTestCase {
             id: sealed.id, senderDeviceId: UUID(), targetDeviceId: nil, sizeBytes: sealed.sizeBytes,
             createdAt: Date())
 
-        let opened = try LiosItem.open(summary: summary, sealedBlob: sealed.blob, groupKey: groupKey)
+        let opened = try LiosItem.open(
+            summary: summary, sealedBlob: sealed.blob, groupKey: groupKey, direction: .sent)
         XCTAssertEqual(opened.filename, "notes.pdf")
         XCTAssertEqual(opened.mimeType, "application/pdf")
         XCTAssertEqual(opened.payload, payload)
+        XCTAssertEqual(opened.direction, .sent)
     }
 
     /// The associated data binds a blob to one specific id and size — opening it against a
@@ -49,7 +53,10 @@ final class LiosItemTests: XCTestCase {
         let wrongSummary = ItemSummary(
             id: UUID(), senderDeviceId: UUID(), targetDeviceId: nil, sizeBytes: sealed.sizeBytes, createdAt: Date())
 
-        XCTAssertThrowsError(try LiosItem.open(summary: wrongSummary, sealedBlob: sealed.blob, groupKey: groupKey)) {
+        XCTAssertThrowsError(
+            try LiosItem.open(
+                summary: wrongSummary, sealedBlob: sealed.blob, groupKey: groupKey, direction: .received)
+        ) {
             XCTAssertTrue($0 is Sealing.TamperError)
         }
     }

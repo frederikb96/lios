@@ -33,7 +33,10 @@ shared team:
 - The share extension uploads the sealed item directly to the relay from its own process,
   instead of staging it into a shared container for the host app to pick up later. This caps
   what it can send: roughly 80 MB, conservative against the extension's undocumented memory
-  ceiling.
+  ceiling. It also means the host app has no direct way to learn what the share extension
+  sent -- `LIOSKit`'s `SentHistorySync` rebuilds that half of history on foreground instead, by
+  asking the relay for what this device itself uploaded, decrypting each item and acking it so
+  the relay can prune it once this device has its own local copy.
 - The notification service extension reads the group key from the shared Keychain item to
   decrypt the push's attached preview, and nothing else.
 

@@ -7,6 +7,7 @@ struct LIOSApp: App {
     /// The only way to receive an APNs device token — the callback is delivered to an app
     /// delegate or nowhere, and SwiftUI has no equivalent.
     @UIApplicationDelegateAdaptor(PushRegistrar.self) private var pushRegistrar
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         LogBuffer.shared.log(.info, "LIOS launched", category: "app")
@@ -18,6 +19,11 @@ struct LIOSApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                SentHistorySyncCoordinator.runIfPaired()
+            }
         }
     }
 }

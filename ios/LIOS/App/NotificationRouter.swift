@@ -38,7 +38,8 @@ final class NotificationRouter {
             let summary = ItemSummary(
                 id: decoded.itemId, senderDeviceId: decoded.senderDeviceId, targetDeviceId: nil,
                 sizeBytes: blob.count, createdAt: Date())
-            let item = try LiosItem.open(summary: summary, sealedBlob: blob, groupKey: session.groupKey)
+            let item = try LiosItem.open(
+                summary: summary, sealedBlob: blob, groupKey: session.groupKey, direction: .received)
 
             try? history.record(item)
             try? await client.deleteItem(id: item.id)

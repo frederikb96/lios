@@ -11,10 +11,11 @@ public struct LiosItem: Sendable, Identifiable {
     public let mimeType: String?
     public let payload: Data
     public let createdAt: Date
+    public let direction: ItemDirection
 
     public init(
         id: UUID, senderDeviceId: UUID, type: ItemType, filename: String?, mimeType: String?,
-        payload: Data, createdAt: Date
+        payload: Data, createdAt: Date, direction: ItemDirection
     ) {
         self.id = id
         self.senderDeviceId = senderDeviceId
@@ -23,6 +24,7 @@ public struct LiosItem: Sendable, Identifiable {
         self.mimeType = mimeType
         self.payload = payload
         self.createdAt = createdAt
+        self.direction = direction
     }
 
     /// The bytes both `open` and `seal` authenticate but never encrypt: the item's clear,
@@ -42,12 +44,16 @@ public struct LiosItem: Sendable, Identifiable {
     }
 
     /// Decrypt and unframe one item, given its clear summary (as reported by the relay) and its
-    /// ciphertext blob fetched from `GET /api/items/{id}`.
+    /// ciphertext blob fetched from `GET /api/items/{id}`. `direction` is never inferred from the
+    /// summary — the same blob is opened for a notification tap (always `.received`) and for
+    /// sent-history sync (always `.sent`), and only the caller knows which fetch this is.
     ///
     /// - Throws: `Sealing.TamperError` if the blob does not verify under `groupKey` and this
     ///   summary's associated data. `Framing.MalformedFrameError` if the plaintext frame is
     ///   malformed. A `DecodingError` if the metadata's `type` is missing or unrecognised.
-    public static func open(summary: ItemSummary, sealedBlob: Data, groupKey: Data) throws -> LiosItem {
+    public static func open(
+        summary: ItemSummary, sealedBlob: Data, groupKey: Data, direction: ItemDirection
+    ) throws -> LiosItem {
         let aad = associatedData(id: summary.id, sizeBytes: summary.sizeBytes)
         let plaintext = try Sealing.open(key: groupKey, blob: sealedBlob, associatedData: aad)
         let (metadata, payload) = try Framing.unpack(frame: plaintext)
@@ -58,7 +64,7 @@ public struct LiosItem: Sendable, Identifiable {
         return LiosItem(
             id: summary.id, senderDeviceId: summary.senderDeviceId, type: type,
             filename: metadata[FrameMetadataKey.filename], mimeType: metadata[FrameMetadataKey.mimeType],
-            payload: payload, createdAt: summary.createdAt)
+            payload: payload, createdAt: summary.createdAt, direction: direction)
     }
 
     /// Everything a sender needs to hand `RelayClient.createItem` — the sealed blob it uploads,

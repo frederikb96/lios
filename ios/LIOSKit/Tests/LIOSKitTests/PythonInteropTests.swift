@@ -19,7 +19,7 @@ final class PythonInteropTests: XCTestCase {
             id: UUID(uuidString: "5b1b6f1a-9c1e-4b0a-9c1e-4b0a9c1e4b0a")!, senderDeviceId: UUID(),
             targetDeviceId: nil, sizeBytes: 114, createdAt: Date())
 
-        let item = try LiosItem.open(summary: summary, sealedBlob: blob, groupKey: key)
+        let item = try LiosItem.open(summary: summary, sealedBlob: blob, groupKey: key, direction: .received)
         XCTAssertEqual(item.type, .file)
         XCTAssertEqual(item.filename, "notes.pdf")
         XCTAssertEqual(item.mimeType, "application/pdf")

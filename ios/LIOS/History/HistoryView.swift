@@ -81,10 +81,18 @@ private struct HistoryRow: View {
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading) {
                 Text(entry.filename ?? label)
-                Text(entry.createdAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(directionLabel)
+                    Text("·")
+                    Text(entry.createdAt, style: .relative)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
+            Spacer()
+            Image(systemName: directionIcon)
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
     }
 
@@ -101,6 +109,20 @@ private struct HistoryRow: View {
         case .text: "Text"
         case .image: "Image"
         case .file: "File"
+        }
+    }
+
+    private var directionLabel: String {
+        switch entry.direction {
+        case .sent: "Sent"
+        case .received: "Received"
+        }
+    }
+
+    private var directionIcon: String {
+        switch entry.direction {
+        case .sent: "arrow.up.circle"
+        case .received: "arrow.down.circle"
         }
     }
 }

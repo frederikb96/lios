@@ -35,6 +35,12 @@ public final class RelayClient: Sendable {
         static let sealedPreview = "X-Sealed-Preview"
     }
 
+    /// Query params, mirroring `lios_protocol.headers` by name rather than by string literal at
+    /// each call site.
+    private enum QueryParam {
+        static let sent = "sent"
+    }
+
     public struct HTTPError: Error, Sendable {
         public let statusCode: Int
         public let body: Data
@@ -146,6 +152,22 @@ public final class RelayClient: Sendable {
         return try await send(request, decoding: [ItemSummary].self)
     }
 
+    /// `GET /api/items?since=&sent=true` — the catch-up list of items *this device itself*
+    /// uploaded, rather than items it received. This is how the app rebuilds sent-item history:
+    /// the share extension that actually uploads an item is a separate process with no access to
+    /// this app's storage, so the app has no other way to learn what it sent.
+    public func fetchSentItems(since: Date?) async throws -> [ItemSummary] {
+        var components = URLComponents(url: Endpoint.items(base: baseURL), resolvingAgainstBaseURL: false)!
+        var queryItems = [URLQueryItem(name: QueryParam.sent, value: "true")]
+        if let since {
+            let formatter = ISO8601DateFormatter()
+            queryItems.append(URLQueryItem(name: "since", value: formatter.string(from: since)))
+        }
+        components.queryItems = queryItems
+        let request = authenticatedRequest(url: components.url!)
+        return try await send(request, decoding: [ItemSummary].self)
+    }
+
     /// `GET /api/items/{id}` — the raw sealed blob. Unlike every other call here this response is
     /// not JSON at all, by design: base64-wrapping it would cost a third of a large image's size
     /// for nothing.
@@ -191,3 +213,13 @@ public final class RelayClient: Sendable {
         }
     }
 }
+
+/// The relay operations `SentHistorySync` needs, narrowed from `RelayClient`'s full surface so a
+/// test can drive the sync logic against a fake with no networking involved at all.
+public protocol SentItemsFetching: Sendable {
+    func fetchSentItems(since: Date?) async throws -> [ItemSummary]
+    func fetchItemBlob(id: UUID) async throws -> Data
+    func deleteItem(id: UUID) async throws
+}
+
+extension RelayClient: SentItemsFetching {}

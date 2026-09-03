@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Release tags attach a prebuilt `.flatpak` bundle of the Linux client, built by the release
+  workflow rather than by hand -- see the root README for installing it.
 - The relay's item listing accepts a `sent=true` query, returning items the calling device
   itself sent instead of items it received -- a separate query from the default catch-up
   list, which keeps excluding a device's own uploads exactly as before. The relay also keeps
@@ -24,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   scanning already uses.
 - The Linux client acks its own uploads to the relay right after a send succeeds, so an item
   it sent no longer sits there until every other paired device acks it too.
+- The iOS app's history distinguishes items it sent from items it received. On foreground it
+  asks the relay for what this device itself uploaded, since the share extension that actually
+  sends an item is a separate process with no access to the app's own storage, decrypts and
+  records each one locally, then acks it so the relay can prune it.
 
 ### Fixed
 

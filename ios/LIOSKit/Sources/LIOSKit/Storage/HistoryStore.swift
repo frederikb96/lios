@@ -24,6 +24,7 @@ public final class HistoryStore: @unchecked Sendable {
         public let filename: String?
         public let mimeType: String?
         public let createdAt: Date
+        public let direction: ItemDirection
 
         public init(item: LiosItem) {
             id = item.id
@@ -32,6 +33,20 @@ public final class HistoryStore: @unchecked Sendable {
             filename = item.filename
             mimeType = item.mimeType
             createdAt = item.createdAt
+            direction = item.direction
+        }
+
+        /// Reads back entries written before `direction` existed as `.received` — every one of
+        /// them predates sent-item history, so that is what they all were.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(UUID.self, forKey: .id)
+            senderDeviceId = try container.decode(UUID.self, forKey: .senderDeviceId)
+            type = try container.decode(ItemType.self, forKey: .type)
+            filename = try container.decodeIfPresent(String.self, forKey: .filename)
+            mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType)
+            createdAt = try container.decode(Date.self, forKey: .createdAt)
+            direction = try container.decodeIfPresent(ItemDirection.self, forKey: .direction) ?? .received
         }
     }
 
