@@ -14,6 +14,7 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from lios_linux.history.models import HistoryItem, ItemKind  # noqa: E402
+from lios_linux.ui.timestamps import format_timestamp  # noqa: E402
 
 _ICON_BY_KIND = {
     ItemKind.TEXT: "edit-copy-symbolic",
@@ -38,7 +39,7 @@ class HistoryRow(Adw.ActionRow):
         self.supports_copy = item.kind != ItemKind.FILE
         self.supports_save = item.kind != ItemKind.TEXT
         self.set_title(item.preview or item.filename or item.kind.value)
-        self.set_subtitle(item.created_at.strftime("%Y-%m-%d %H:%M"))
+        self.set_subtitle(format_timestamp(item.created_at))
         self.add_prefix(Gtk.Image.new_from_icon_name(_ICON_BY_KIND[item.kind]))
 
         if self.supports_copy:

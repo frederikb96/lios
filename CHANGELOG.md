@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   that created it had committed, so a recipient reacting to either signal could fetch the item
   the instant it arrived and get a 404 for a row that was in the database all along. The item
   is committed first now.
+- The history list rendered every timestamp in UTC regardless of the system's own timezone.
+  Recent items now read as "Just now" or "N minutes ago"; anything older shows the local clock
+  time, or a local date and time once it's no longer the same day.
 
 ## [0.1.1] - 2026-09-02
 
