@@ -154,7 +154,12 @@ async def create_item_endpoint(
             sealed_preview=sealed_preview,
             recipient_ids=recipient_ids,
         )
-        await session.flush()
+        # Committed here, not left to the `get_session` dependency's teardown -- that only
+        # runs once this handler returns, which is after the stream publish and the push
+        # below. Announcing or pushing first would tell every recipient about an item that a
+        # `GET` issued right then, on its own session, cannot yet see: the row is flushed but
+        # still inside this request's own uncommitted transaction.
+        await session.commit()
     except ItemIdConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

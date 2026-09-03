@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   so every process start began from "now" and anything sent before that was lost the moment
   the relay's 7-day retention caught up with it. The watermark now survives in local history
   and resumes from wherever this device last left off.
+- `POST /api/items` announced the new item on the stream and pushed it before the transaction
+  that created it had committed, so a recipient reacting to either signal could fetch the item
+  the instant it arrived and get a 404 for a row that was in the database all along. The item
+  is committed first now.
 
 ## [0.1.1] - 2026-09-02
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import uuid
 
+import pytest
 from httpx import AsyncClient
 from lios_protocol.crypto import generate_group_key, seal
 from lios_protocol.headers import (
@@ -13,6 +14,7 @@ from lios_protocol.headers import (
     TARGET_DEVICE_ID_QUERY_PARAM,
 )
 
+import lios_relay.api.items as items_module
 from lios_relay.database.connection import DatabaseConnection
 from lios_relay.database.models import Item
 from lios_relay.database.repository import get_device_by_token
@@ -62,6 +64,43 @@ async def test_create_and_fetch_item_round_trips_the_sealed_blob(
     fetched = await client.get(f"/api/items/{created['id']}", headers=auth_headers(phone_token))
     assert fetched.status_code == 200
     assert fetched.content == blob
+
+
+async def test_item_is_committed_before_it_is_announced_or_pushed(
+    client: AsyncClient,
+    laptop_token: str,
+    phone_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stream event and the push both go out only once the item is durably visible to a
+    different connection -- never from inside the still-open transaction that created it.
+
+    Hooks the recipient push step, which the endpoint only reaches after it has already
+    published the stream event, and fetches the item there on its own fresh session -- exactly
+    what a recipient reacting to either signal does. No timing dependency: the hook runs
+    in the request's own control flow, strictly between the announcement and the eventual
+    commit, so this either fails every time the ordering is wrong or passes every time it
+    is right.
+    """
+    item_id = new_uuid()
+    probe_response = {}
+    original_push = items_module._push_to_recipients
+
+    async def probing_push(*args, **kwargs):
+        probe_response["get"] = await client.get(
+            f"/api/items/{item_id}", headers=auth_headers(phone_token)
+        )
+        return await original_push(*args, **kwargs)
+
+    monkeypatch.setattr(items_module, "_push_to_recipients", probing_push)
+
+    created = await _post_item(client, laptop_token, b"probe me", item_id=item_id)
+    assert created["id"] == str(item_id)
+
+    assert "get" in probe_response, "expected the push step to run"
+    assert probe_response["get"].status_code == 200, (
+        "item was not yet committed when its announcement/push step ran"
+    )
 
 
 async def test_created_item_id_is_the_clients_own(client: AsyncClient, laptop_token: str) -> None:
