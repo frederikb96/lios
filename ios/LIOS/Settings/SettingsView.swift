@@ -9,7 +9,7 @@ import SwiftUI
 /// every time something constructs a fresh `SettingsView()` value (every re-evaluation of
 /// whichever parent body places one, `RootView`'s `TabView` here), and only the *storage* `@State`
 /// preserves is exempt from being discarded. The construction itself, Keychain read included,
-/// still happens and is thrown away. The crash log caught exactly that: `SettingsViewModel.
+/// still happens and is thrown away. A crash log caught exactly that: `SettingsViewModel.
 /// init()` on the main thread, blocked in `SecItemCopyMatching`, called from `SettingsView.init()`
 /// inside `RootView.body.getter`. An optional `@State` plus a `.task` guard is the standard fix —
 /// `.task` runs once per view identity, not once per parent body pass.

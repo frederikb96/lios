@@ -1,6 +1,6 @@
 import Foundation
 
-/// The three content types the design fixed for v1: text, images and files, all of it, both
+/// The three content types supported in v1: text, images and files, all of it, both
 /// directions. What differs between them is what each end *offers* on delivery, not what
 /// travels — see `LiosItem` for the receive-side branch.
 public enum ItemType: String, Codable, Sendable {

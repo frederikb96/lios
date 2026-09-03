@@ -1,7 +1,7 @@
 import Foundation
 
 /// The last N items for M days, in the app's own storage, auto-expiring —
-/// the design's requirement. Dismissing a notification is never destructive: the item stays here,
+/// Dismissing a notification is never destructive: the item stays here,
 /// browsable, until the retention policy prunes it.
 ///
 /// Built on plain files under one directory rather than a database: history is small, bounded by
