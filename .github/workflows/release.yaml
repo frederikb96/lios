@@ -124,11 +124,11 @@ jobs:
       - name: Install the Flatpak toolchain
         run: |
           sudo apt-get update -qq
-          # elfutils is not a flatpak-builder dependency, but every build that produces a
-          # native extension reaches for its `eu-strip` to split out debug symbols and fails
-          # outright when it is absent.
-          sudo apt-get install -y -qq --no-install-recommends \
-            flatpak flatpak-builder elfutils
+          # Installed with recommends: flatpak-builder only *recommends* elfutils, and every
+          # build producing a native extension calls its `eu-strip` and fails outright without
+          # it. librsvg2-common is named explicitly because appstreamcli renders the app's SVG
+          # icon through gdk-pixbuf, and reports a missing loader as an unreadable file.
+          sudo apt-get install -y -qq flatpak flatpak-builder librsvg2-common
 
       - name: Build the bundle
         working-directory: linux
