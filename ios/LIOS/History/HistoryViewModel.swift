@@ -1,6 +1,5 @@
 import LIOSKit
 import SwiftUI
-import UIKit
 
 @MainActor
 @Observable
@@ -16,9 +15,12 @@ final class HistoryViewModel {
         store.payload(for: id)
     }
 
-    func copyText(for entry: HistoryStore.Entry) {
-        guard entry.type == .text, let data = store.payload(for: entry.id) else { return }
-        UIPasteboard.general.string = String(decoding: data, as: UTF8.self)
+    /// The share sheet takes a `String` for a text item rather than a staged file, so its
+    /// first offer is Copy and everything after it (Messages, Notes, a translation action)
+    /// receives real text instead of a `.bin` attachment.
+    func shareText(for entry: HistoryStore.Entry) -> String? {
+        guard entry.type == .text, let data = store.payload(for: entry.id) else { return nil }
+        return String(decoding: data, as: UTF8.self)
     }
 
     func shareFileURL(for entry: HistoryStore.Entry) -> URL? {

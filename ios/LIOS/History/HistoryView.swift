@@ -38,14 +38,7 @@ private struct HistoryList: View {
                 HistoryRow(entry: entry)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        switch entry.type {
-                        case .text:
-                            viewModel.copyText(for: entry)
-                        case .image, .file:
-                            if let url = viewModel.shareFileURL(for: entry) {
-                                shareTarget = ShareTarget(url: url)
-                            }
-                        }
+                        shareTarget = target(for: entry)
                     }
             }
             .navigationTitle("History")
@@ -59,17 +52,44 @@ private struct HistoryList: View {
             .onAppear { viewModel.refresh() }
             .refreshable { viewModel.refresh() }
             .sheet(item: $shareTarget) { target in
-                ActivityView(items: [target.url])
+                ActivityView(items: target.activityItems)
             }
+        }
+    }
+
+    /// Every kind of item opens the same share sheet -- a text one differs only in what it
+    /// hands over, and `nil` here (a payload no longer on disk) simply leaves the sheet shut.
+    private func target(for entry: HistoryStore.Entry) -> ShareTarget? {
+        switch entry.type {
+        case .text:
+            guard let text = viewModel.shareText(for: entry) else { return nil }
+            return ShareTarget(id: entry.id.uuidString, payload: .text(text))
+        case .image, .file:
+            guard let url = viewModel.shareFileURL(for: entry) else { return nil }
+            return ShareTarget(id: entry.id.uuidString, payload: .file(url))
         }
     }
 }
 
-/// `.sheet(item:)` needs `Identifiable`; wrapping rather than conforming `URL` itself avoids
-/// colliding with any conformance a future SDK adds.
+/// `.sheet(item:)` needs `Identifiable`, and `UIActivityViewController` takes `[Any]` -- so the
+/// payload is an enum rather than an `Any`, keeping the two shapes the sheet can carry explicit
+/// and the type checkable. The item's own id is the identity: a text item has no URL to borrow
+/// one from, and re-tapping the same row should reopen the same sheet either way.
 private struct ShareTarget: Identifiable {
-    let url: URL
-    var id: String { url.absoluteString }
+    enum Payload {
+        case text(String)
+        case file(URL)
+    }
+
+    let id: String
+    let payload: Payload
+
+    var activityItems: [Any] {
+        switch payload {
+        case .text(let text): [text]
+        case .file(let url): [url]
+        }
+    }
 }
 
 private struct HistoryRow: View {

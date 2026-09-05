@@ -39,6 +39,13 @@ class ItemCreated(BaseModel):
     created_at: datetime
 
 
+#: How often the relay sends a text ping down an otherwise-idle `GET /api/stream` socket.
+#: A client holding that socket relies on it to notice a connection that died without a close
+#: frame, so the two halves have to agree on the number -- it lives here rather than in either
+#: of them.
+STREAM_PING_INTERVAL_SECONDS = 30.0
+
+
 class StreamEvent(BaseModel):
     """One message sent down `GET /api/stream` when a new item arrives.
 

@@ -150,8 +150,8 @@ holds a `.widget` rather than inheriting from `Adw.StatusPage`).
   decides what a paste or a drop actually is.
 - `history/` -- SQLite metadata plus a sibling blob directory, with explicit retention.
 - `relaylink/` -- the relay connection: REST calls, the `/api/stream` WebSocket with
-  reconnect/backoff, pairing, and the item envelope (framing + encryption, via
-  `lios-protocol`).
+  reconnect/backoff and the staleness watchdog that notices a socket which died without
+  saying so, pairing, and the item envelope (framing + encryption, via `lios-protocol`).
 - `portals/` -- Background (autostart), Notification, and Flatpak update detection.
 - `keyring.py` -- the device token and group key, via the Secret Service.
 - `ui/` -- the window (paste-to-send, drag-and-drop, the history list with its Copy/Save

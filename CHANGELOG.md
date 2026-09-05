@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Linux client held a WebSocket that had died without a close frame -- an IPv6 privacy
+  address rotating away underneath the socket leaves the kernel reporting it as ESTABLISHED
+  indefinitely and libsoup never emits `closed`, so the client waited forever for a signal
+  that was never coming while items piled up on the relay. It now treats silence past three
+  of the relay's ping intervals as a dead connection, drops it and reconnects, which also
+  runs the existing catch-up so nothing missed during the gap is lost.
+- Tapping a text item in the iOS app's history did nothing visible: it copied to the
+  pasteboard with no sheet, no toast and no other feedback. Text now opens the same share
+  sheet an image or a file does, whose first offer is Copy.
 - The relay's `/openapi.json` reported a fixed `0.1.0` as its version whatever was actually
   running, so the one document that says what a deployed relay supports could not be used to
   tell which build was serving it. It now reports the version of the installed package.

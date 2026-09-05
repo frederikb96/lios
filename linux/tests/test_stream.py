@@ -12,6 +12,14 @@ moment it runs, not use a value captured earlier, it must dispatch every item th
 `tests/test_history_watermark.py` -- and it must never block the caller on the REST call
 itself, since that caller is the GTK main loop.
 
+Also covers the staleness watchdog, which is what notices a connection that died without
+saying so -- an IPv6 privacy address rotating away underneath the socket, a NAT table
+forgetting the flow, a suspend. The kernel keeps reporting such a connection as ESTABLISHED
+and libsoup never emits `closed`, so silence past `STALE_AFTER_SECONDS` is the only evidence
+there is; a client that waits for a close frame instead waits forever. The generation guard is
+tested alongside it, since a late `closed` signal for a socket the watchdog already gave up on
+would otherwise open a second connection in parallel with the replacement.
+
 Needs no socket and no running relay: `_on_message` only touches a real `GLib.Bytes` and a
 `Soup.WebsocketDataType` value, both constructible headless, and `_catch_up` is driven by a
 fake `Soup.Session`-shaped object that returns canned JSON instead of making a real request.
@@ -36,7 +44,7 @@ gi.require_version("GLib", "2.0")
 from gi.repository import GLib, Soup  # noqa: E402
 from lios_protocol.wire import ItemSummary  # noqa: E402
 
-from lios_linux.relaylink.stream import StreamConnection  # noqa: E402
+from lios_linux.relaylink.stream import STALE_AFTER_SECONDS, StreamConnection  # noqa: E402
 
 
 def _pump_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> None:
@@ -183,3 +191,92 @@ def test_catch_up_returns_before_the_rest_call_completes() -> None:
 
     release.set()
     assert elapsed < 0.5
+
+
+class _FakeWebsocket:
+    """Stands in for a live `Soup.WebsocketConnection`. The watchdog only ever closes one."""
+
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    def close(self, _code: object, _data: object) -> None:
+        self.close_calls += 1
+
+
+def _live_connection() -> tuple[StreamConnection, _FakeWebsocket]:
+    """A `StreamConnection` in the state it is in just after a successful connect."""
+    connection, _received = _connection()
+    socket = _FakeWebsocket()
+    connection._stopped = False
+    connection._connection = socket  # type: ignore[assignment]
+    connection._last_frame_at = time.monotonic()
+    return connection, socket
+
+
+def test_the_watchdog_drops_a_connection_that_has_gone_silent() -> None:
+    connection, socket = _live_connection()
+    connection._last_frame_at = time.monotonic() - STALE_AFTER_SECONDS - 1
+
+    connection._watchdog_tick()
+
+    assert socket.close_calls == 1
+    assert connection._connection is None
+
+
+def test_the_watchdog_leaves_a_connection_that_is_still_receiving_frames() -> None:
+    connection, socket = _live_connection()
+    connection._last_frame_at = time.monotonic() - STALE_AFTER_SECONDS + 5
+
+    connection._watchdog_tick()
+
+    assert socket.close_calls == 0
+    assert connection._connection is socket
+
+
+def test_a_ping_counts_as_evidence_the_connection_is_alive() -> None:
+    """A ping carries nothing, and is the only thing an idle connection ever sends -- so it
+    has to stamp the liveness clock even though it is dispatched nowhere."""
+    connection, socket = _live_connection()
+    connection._last_frame_at = time.monotonic() - STALE_AFTER_SECONDS - 1
+
+    connection._on_frame(
+        connection._generation,
+        socket,
+        Soup.WebsocketDataType.TEXT,
+        GLib.Bytes.new(b'{"type":"ping"}'),
+    )
+    connection._watchdog_tick()
+
+    assert socket.close_calls == 0
+    assert connection._connection is socket
+
+
+def test_a_late_closed_signal_for_an_abandoned_socket_schedules_no_second_reconnect() -> None:
+    """`close` is not synchronous, so the socket the watchdog just gave up on still emits
+    `closed` afterwards. Acting on it would schedule a reconnect on top of the one the
+    watchdog already scheduled, leaving two connections racing each other."""
+    connection, _socket = _live_connection()
+    connection._last_frame_at = time.monotonic() - STALE_AFTER_SECONDS - 1
+    stale_generation = connection._generation
+
+    connection._watchdog_tick()
+    attempts_after_watchdog = connection._attempt
+    connection._on_closed(stale_generation)
+
+    assert connection._attempt == attempts_after_watchdog
+
+
+def test_a_frame_arriving_on_an_abandoned_socket_does_not_keep_it_looking_alive() -> None:
+    connection, socket = _live_connection()
+    stale_generation = connection._generation
+    connection._abandon_connection()
+    connection._last_frame_at = 0.0
+
+    connection._on_frame(
+        stale_generation,
+        socket,
+        Soup.WebsocketDataType.TEXT,
+        GLib.Bytes.new(b'{"type":"ping"}'),
+    )
+
+    assert connection._last_frame_at == 0.0

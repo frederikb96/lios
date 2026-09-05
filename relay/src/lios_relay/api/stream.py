@@ -30,6 +30,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from lios_protocol.wire import STREAM_PING_INTERVAL_SECONDS
 from starlette.websockets import WebSocketState
 
 from lios_relay.database.connection import get_db_connection
@@ -39,10 +40,6 @@ from lios_relay.server_state import get_broadcaster
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stream"])
-
-#: How often a ping is sent to an otherwise-idle connection -- see the reconnect contract
-#: above, which a client relies on to detect a connection that died without a close frame.
-_PING_INTERVAL_SECONDS = 30.0
 
 
 @router.websocket("/api/stream")
@@ -66,7 +63,9 @@ async def stream(websocket: WebSocket) -> None:
     try:
         while True:
             try:
-                event_json = await asyncio.wait_for(queue.get(), timeout=_PING_INTERVAL_SECONDS)
+                event_json = await asyncio.wait_for(
+                    queue.get(), timeout=STREAM_PING_INTERVAL_SECONDS
+                )
             except TimeoutError:
                 if websocket.application_state != WebSocketState.CONNECTED:
                     break
