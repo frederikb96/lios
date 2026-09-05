@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Swift's own documented Ubuntu dependency list, plus curl/file/ca-certificates for the
       # setup action itself.
