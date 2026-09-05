@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-05
+
 ### Fixed
 
 - The Linux client held a WebSocket that had died without a close frame -- an IPv6 privacy

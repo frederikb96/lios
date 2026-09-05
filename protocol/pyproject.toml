@@ -1,6 +1,6 @@
 [project]
 name = "lios-protocol"
-version = "0.1.6"
+version = "0.1.7"
 description = "Shared crypto, framing, pairing and wire types for LIOS clients and relay"
 readme = "README.md"
 requires-python = ">=3.13"

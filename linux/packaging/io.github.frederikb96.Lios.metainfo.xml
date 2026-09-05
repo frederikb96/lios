@@ -26,6 +26,14 @@
   <url type="homepage">https://github.com/frederikb96/lios</url>
   <url type="bugtracker">https://github.com/frederikb96/lios/issues</url>
   <releases>
+    <release version="0.1.1" date="2026-09-05">
+      <description>
+        <p>
+          Reconnects when the connection to the relay dies without notice, instead of
+          waiting silently for items that never arrive.
+        </p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-02">
       <description>
         <p>First release.</p>

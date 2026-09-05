@@ -1,6 +1,6 @@
 [project]
 name = "lios-linux"
-version = "0.1.0"
+version = "0.1.1"
 description = "LIOS Linux client -- resident GTK4/libadwaita app, clipboard bridge to the relay"
 readme = "README.md"
 requires-python = ">=3.12"
