@@ -35,7 +35,7 @@ jobs:
             libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
             libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
 
-      - uses: swift-actions/setup-swift@v2
+      - uses: swift-actions/setup-swift@v3
         with:
           swift-version: '6.2'
 
