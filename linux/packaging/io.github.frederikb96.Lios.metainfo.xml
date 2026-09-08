@@ -26,6 +26,14 @@
   <url type="homepage">https://github.com/frederikb96/lios</url>
   <url type="bugtracker">https://github.com/frederikb96/lios/issues</url>
   <releases>
+    <release version="0.1.2" date="2026-09-08">
+      <description>
+        <p>
+          Waits for the login keyring to unlock instead of starting up disconnected and
+          staying that way.
+        </p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-09-05">
       <description>
         <p>
