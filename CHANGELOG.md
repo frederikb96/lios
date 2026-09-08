@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-08
+
+### Fixed
+
+- The Linux client gave up on the relay for the rest of the session if the login keyring was
+  still locked when it started. The Background portal brings it up at login and the keyring
+  unlocks separately, usually seconds later, so the token it needs was routinely unreadable
+  on the first attempt -- leaving a running app that was permanently disconnected and looked
+  no different from a connected one with an empty history. It now retries until the keyring
+  opens.
+
 ## [0.1.7] - 2026-09-05
 
 ### Fixed

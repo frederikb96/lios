@@ -58,6 +58,7 @@ from lios_linux.history.models import Direction, HistoryItem, ItemKind  # noqa: 
 from lios_linux.history.store import HistoryStore  # noqa: E402
 from lios_linux.portals import background, notifications, updates  # noqa: E402
 from lios_linux.relaylink import item_codec, pairing_flow, rest  # noqa: E402
+from lios_linux.relaylink.backoff import next_delay  # noqa: E402
 from lios_linux.relaylink.item_codec import DecodedItem  # noqa: E402
 from lios_linux.relaylink.stream import StreamConnection  # noqa: E402
 
@@ -122,6 +123,7 @@ class LiosApplication(Adw.Application):
         )
         self.soup_session = Soup.Session()
         self._stream: StreamConnection | None = None
+        self._keyring_attempt = 0
         self._window: LiosWindow | None = None
         self._pending_item_id: str | None = None
         self._resident = False
@@ -195,7 +197,17 @@ class LiosApplication(Adw.Application):
             self.add_action(action)
 
     def _connect_to_relay_if_paired(self) -> None:
-        if not self.config.relay_url:
+        """Bring the relay connection up, retrying while the keyring is still locked.
+
+        A locked keyring is the normal state for the first seconds of a session: the
+        Background portal starts this app at login, and the login keyring unlocks separately
+        and often later. The token is unreadable until it does, so giving up on the first
+        attempt leaves the app running and permanently disconnected -- indistinguishable, from
+        the outside, from an app that is connected and simply has nothing to deliver. Retrying
+        on `relaylink.backoff`'s schedule costs one D-Bus property read per attempt and needs
+        no signal from the Secret Service.
+        """
+        if not self.config.relay_url or self._stream is not None:
             return
         try:
             device_token = keyring.load_device_token()
@@ -203,7 +215,9 @@ class LiosApplication(Adw.Application):
             return
         except keyring.KeyringUnavailable as exc:
             logger.warning("cannot connect to the relay yet: %s", exc)
+            self._schedule_keyring_retry()
             return
+        self._keyring_attempt = 0
         self._stream = StreamConnection(
             relay_url=self.config.relay_url,
             device_token=device_token,
@@ -212,6 +226,15 @@ class LiosApplication(Adw.Application):
             get_catch_up_since=self._catch_up_since,
         )
         self._stream.start()
+
+    def _schedule_keyring_retry(self) -> None:
+        delay = next_delay(self._keyring_attempt)
+        self._keyring_attempt += 1
+        GLib.timeout_add_seconds(max(int(delay), 1), self._keyring_retry_tick)
+
+    def _keyring_retry_tick(self) -> bool:
+        self._connect_to_relay_if_paired()
+        return bool(GLib.SOURCE_REMOVE)
 
     def _catch_up_since(self) -> datetime:
         """The watermark the next catch-up resumes from: the newest relay timestamp among

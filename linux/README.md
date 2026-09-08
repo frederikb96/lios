@@ -49,6 +49,14 @@ dependency on a GNOME version that has one. `lios background` is the internal co
 D-Bus service file and the autostart command registered with the Background portal both use
 it, so bringing the app up at login or via D-Bus activation never draws a window.
 
+Starting at login means starting before the login keyring does. The device token lives in the
+Secret Service, so until that collection unlocks there is no token to read and no relay
+connection to make -- and the app is up, its window opens, and its history simply stays empty,
+which looks exactly like being connected with nothing to deliver. `_connect_to_relay_if_paired`
+therefore treats a locked keyring as a state to wait out rather than an answer, retrying on
+`relaylink.backoff`'s schedule until the token can be read. A missing token is the opposite
+case and is not retried: that one is settled until pairing calls back in.
+
 ## Staying current
 
 Being resident cuts the other way too: installing a new build replaces files on disk that an
