@@ -1,10 +1,17 @@
 """`org.freedesktop.portal.Background` -- asking (never assuming) permission to autostart.
 
-`autostart: true` and `dbus-activatable: true` are documented option keys: the portal itself
-writes the host-side autostart entry, so this application never needs filesystem access to
-place one, and GNOME lists it under Settings -> Applications -> Background Apps, where the
-user can revoke it at any time. This is asked once, with a `reason` the consent dialog shows
--- never enabled silently, per the workstation rule against auto-enabling background tasks.
+`autostart: true` is a documented option key: the portal itself writes the host-side
+autostart entry, so this application never needs filesystem access to place one, and GNOME
+lists it under Settings -> Applications -> Background Apps, where the user can revoke it at
+any time. This is asked once, with a `reason` the consent dialog shows -- never enabled
+silently, per the workstation rule against auto-enabling background tasks.
+
+`dbus-activatable` is deliberately false, which is what makes the login launch windowless. A
+`DBusActivatable=true` autostart entry is not launched by its `Exec` line at all: the session
+calls `org.freedesktop.Application.Activate` on the bus name instead, which reaches
+`do_activate` and shows a window -- so the `background` argument written into `commandline`
+would never be seen, and every login would open the app in the foreground. With it false the
+session runs the command line verbatim, which is the whole point of having one.
 
 Untestable in this environment: needs a running `xdg-desktop-portal-gnome` background backend.
 """
@@ -45,7 +52,7 @@ def request_autostart(
             "reason": GLib.Variant("s", reason),
             "autostart": GLib.Variant("b", True),
             "commandline": GLib.Variant("as", command),
-            "dbus-activatable": GLib.Variant("b", True),
+            "dbus-activatable": GLib.Variant("b", False),
         }
         return GLib.Variant("(sa{sv})", ("", options))
 

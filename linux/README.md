@@ -47,7 +47,10 @@ entry point any desktop's own keyboard settings bind, forwarded to the running i
 D-Bus by `Gio.Application`'s command-line handling -- no portal, no consent dialog, no
 dependency on a GNOME version that has one. `lios background` is the internal counterpart: the
 D-Bus service file and the autostart command registered with the Background portal both use
-it, so bringing the app up at login or via D-Bus activation never draws a window.
+it, so bringing the app up at login or via D-Bus activation never draws a window. The
+autostart entry the portal writes is therefore deliberately *not* D-Bus activatable, since an
+activatable one is launched by an `Activate` call rather than by its own command line -- see
+`portals/background.py`.
 
 Starting at login means starting before the login keyring does. The device token lives in the
 Secret Service, so until that collection unlocks there is no token to read and no relay
