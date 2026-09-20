@@ -76,7 +76,7 @@ jobs:
             ios/LIOS ios/LIOSShare ios/LIOSNotify ios/LIOSKit/Sources ios/LIOSKit/Tests
           git diff > format.patch
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: ios-format-patch
