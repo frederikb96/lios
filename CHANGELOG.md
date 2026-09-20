@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-20
+
+### Fixed
+
+- The Linux client opened its window on every login instead of coming up in the background.
+  The autostart entry the Background portal wrote was D-Bus activatable, and such an entry is
+  started by an `Activate` call rather than by its own command line, so the `background`
+  argument it carried was never seen.
+
 ## [0.1.8] - 2026-09-08
 
 ### Fixed
