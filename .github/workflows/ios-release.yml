@@ -5,9 +5,6 @@ name: iOS Release
 on:
   push:
     tags: ['ios-v*.*.*']
-  # TestFlight builds expire after 90 days — this keeps LIOS from silently stopping launching.
-  schedule:
-    - cron: '23 4 1 */2 *'
   workflow_dispatch:
     inputs:
       version:
@@ -18,6 +15,13 @@ on:
         description: 'Upload to TestFlight'
         type: boolean
         default: false
+      # TestFlight builds stop launching 90 days after upload. Setting this rebuilds an existing
+      # release under a new build number — same code, same marketing version — and uploads it,
+      # which is how an installed app is kept from expiring between releases.
+      refresh_tag:
+        description: 'Release tag to rebuild for TestFlight (e.g. ios-v1.2.3). Overrides version, implies upload.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -35,7 +39,10 @@ jobs:
         working-directory: ios
 
     steps:
+      # Empty unless refreshing, which checks out the triggering ref as usual.
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.refresh_tag }}
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -50,8 +57,11 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          REFRESH_TAG: ${{ github.event.inputs.refresh_tag }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          if [ -n "${REFRESH_TAG}" ]; then
+            echo "marketing=${REFRESH_TAG#ios-v}" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "marketing=${GITHUB_REF_NAME#ios-v}" >> "$GITHUB_OUTPUT"
           else
             echo "marketing=${INPUT_VERSION#v}" >> "$GITHUB_OUTPUT"
@@ -79,7 +89,7 @@ jobs:
       # 🚨 UPLOADING IS NOT DISTRIBUTING — see the `distribute` job below and the ios skill's
       # signing reference for why an uploaded, VALID build can still be installable by nobody.
       - name: Upload to TestFlight
-        if: github.ref_type == 'tag' || github.event.inputs.upload == 'true'
+        if: github.ref_type == 'tag' || github.event.inputs.upload == 'true' || github.event.inputs.refresh_tag != ''
         run: bundle exec fastlane upload
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -105,7 +115,7 @@ jobs:
   # plain Ubuntu: attaching a build is authenticated HTTPS and needs no Apple hardware.
   distribute:
     needs: build
-    if: github.ref_type == 'tag' || github.event.inputs.upload == 'true'
+    if: github.ref_type == 'tag' || github.event.inputs.upload == 'true' || github.event.inputs.refresh_tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
