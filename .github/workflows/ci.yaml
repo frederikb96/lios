@@ -29,6 +29,7 @@ jobs:
       linux: ${{ steps.filter.outputs.linux }}
       image: ${{ steps.filter.outputs.image }}
       chart: ${{ steps.filter.outputs.chart }}
+      ios: ${{ steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@v7
 
@@ -54,6 +55,11 @@ jobs:
               - '.github/workflows/ci.yaml'
             chart:
               - 'charts/**'
+              - '.github/workflows/ci.yaml'
+            ios:
+              - 'ios/**'
+              - '.github/workflows/ios-free-checks.yml'
+              - '.github/workflows/ios-mac.yml'
               - '.github/workflows/ci.yaml'
 
   protocol-lint:
@@ -286,6 +292,18 @@ jobs:
             exit 1
           fi
 
+  ios-free:
+    name: iOS free checks
+    needs: detect
+    if: ${{ needs.detect.outputs.ios == 'true' }}
+    uses: ./.github/workflows/ios-free-checks.yml
+
+  ios-mac:
+    name: iOS Mac
+    needs: detect
+    if: ${{ needs.detect.outputs.ios == 'true' }}
+    uses: ./.github/workflows/ios-mac.yml
+
   ci-ok:
     name: CI ok
     needs:
@@ -300,6 +318,8 @@ jobs:
         linux-test,
         image,
         chart,
+        ios-free,
+        ios-mac,
       ]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -315,7 +335,9 @@ jobs:
             "${{ needs.linux-lint.result }}" \
             "${{ needs.linux-test.result }}" \
             "${{ needs.image.result }}" \
-            "${{ needs.chart.result }}"; do
+            "${{ needs.chart.result }}" \
+            "${{ needs.ios-free.result }}" \
+            "${{ needs.ios-mac.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "A required job did not succeed: $result"
               exit 1
