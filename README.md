@@ -102,6 +102,18 @@ services work. Running your own LIOS therefore means your own Apple developer ac
 your own TestFlight build alongside your own relay; the iOS app in this repository is not
 distributed as an installable artifact for other people's relays.
 
+## Development
+
+Each package documents its own checks: [`protocol/`](protocol/README.md#development),
+[`relay/`](relay/README.md#development), [`linux/`](linux/README.md#development) and
+[`ios/`](ios/README.md#building-and-testing). Pull requests run them in CI, limited to the
+packages a change touches.
+
+```bash
+helm lint charts/lios && helm template lios charts/lios      # chart
+python scripts/check_release_versions.py                     # version fields agree
+```
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
