@@ -1,11 +1,8 @@
 # Everything about the iOS half that can be checked without Apple hardware.
-# Gated on ios/** so a relay-only push does not spend a run here.
+# Gated on ios/** so a relay-only change does not spend a run here.
 name: iOS free checks
 
 on:
-  push:
-    branches: [main]
-    paths: ["ios/**"]
   pull_request:
     paths: ["ios/**"]
   workflow_dispatch:

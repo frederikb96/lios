@@ -68,7 +68,7 @@ jobs:
           fi
           echo "build=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-      # No test step here — the package runs on every push to ios/** in ios-free-checks, on
+      # No test step here — the package runs on every pull request touching ios/** in ios-free-checks, on
       # Linux, in a couple of minutes. `fastlane build` below still archives Release and would
       # catch a release-config-only compile error.
       - name: Build and sign
