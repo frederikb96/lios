@@ -68,7 +68,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install dependencies
         working-directory: protocol
@@ -94,7 +94,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install dependencies
         working-directory: protocol
@@ -116,7 +116,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
@@ -141,7 +141,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
@@ -162,7 +162,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
