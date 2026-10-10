@@ -19,6 +19,17 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Tools the linux jobs install by name; Renovate bumps them (renovate.json).
+env:
+  # renovate: datasource=pypi depName=pytest
+  PYTEST_VERSION: "9.1.1"
+  # renovate: datasource=pypi depName=ruff
+  RUFF_VERSION: "0.17.0"
+  # renovate: datasource=pypi depName=mypy
+  MYPY_VERSION: "2.4.0"
+  # renovate: datasource=pypi depName=qrcode
+  QRCODE_VERSION: "8.2"
+
 jobs:
   detect:
     name: Detect changed paths
@@ -203,7 +214,7 @@ jobs:
           source linux/.venv/bin/activate
           pip install -e ./protocol --ignore-requires-python
           pip install -e "./linux[dev]" --no-deps
-          pip install pytest ruff mypy qrcode
+          pip install "pytest==$PYTEST_VERSION" "ruff==$RUFF_VERSION" "mypy==$MYPY_VERSION" "qrcode==$QRCODE_VERSION"
 
       - name: Lint
         run: |
@@ -241,7 +252,7 @@ jobs:
           source linux/.venv/bin/activate
           pip install -e ./protocol --ignore-requires-python
           pip install -e "./linux[dev]" --no-deps
-          pip install pytest ruff mypy qrcode
+          pip install "pytest==$PYTEST_VERSION" "ruff==$RUFF_VERSION" "mypy==$MYPY_VERSION" "qrcode==$QRCODE_VERSION"
 
       - name: Test
         run: |
@@ -324,22 +335,11 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any required job failed
+      - name: Fail if any required job did not succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          for result in \
-            "${{ needs.protocol-lint.result }}" \
-            "${{ needs.protocol-test.result }}" \
-            "${{ needs.relay-lint.result }}" \
-            "${{ needs.relay-unit.result }}" \
-            "${{ needs.relay-pg.result }}" \
-            "${{ needs.linux-lint.result }}" \
-            "${{ needs.linux-test.result }}" \
-            "${{ needs.image.result }}" \
-            "${{ needs.chart.result }}" \
-            "${{ needs.ios-free.result }}" \
-            "${{ needs.ios-mac.result }}"; do
-            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
-              echo "A required job did not succeed: $result"
-              exit 1
-            fi
-          done
+          echo "results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac

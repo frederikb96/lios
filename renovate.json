@@ -12,6 +12,15 @@
   },
   "osvVulnerabilityAlerts": true,
   "labels": ["dependencies", "renovate"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tool versions installed by name in the CI workflow",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yaml$/"],
+      "matchStrings": ["#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*[A-Z_]+_VERSION:\\s*\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "{{{datasource}}}"
+    }
+  ],
   "packageRules": [
     {
       "description": "Patch updates: no delay",
