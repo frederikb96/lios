@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The iOS package builds against swift-crypto 5.0.
+
 ## [0.1.10] - 2026-10-06
 
 ### Changed
