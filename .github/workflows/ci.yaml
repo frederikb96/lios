@@ -24,7 +24,7 @@ env:
   # renovate: datasource=pypi depName=pytest
   PYTEST_VERSION: "9.1.1"
   # renovate: datasource=pypi depName=ruff
-  RUFF_VERSION: "0.17.1"
+  RUFF_VERSION: "0.17.2"
   # renovate: datasource=pypi depName=mypy
   MYPY_VERSION: "2.4.0"
   # renovate: datasource=pypi depName=qrcode
