@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-10-24
+
 ### Changed
 
+- The relay image runs on Python 3.15.
 - The iOS package builds against swift-crypto 5.0.
 
 ## [0.1.10] - 2026-10-06
