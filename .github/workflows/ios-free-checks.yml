@@ -32,7 +32,7 @@ jobs:
       # goes through its Swiftly install, which fails signature verification on a clean runner.
       - uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.4.1'
+          swift-version: '6.4.2'
 
       - uses: actions/cache@v6
         with:
