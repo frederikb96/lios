@@ -26,7 +26,7 @@ env:
   # renovate: datasource=pypi depName=ruff
   RUFF_VERSION: "0.17.2"
   # renovate: datasource=pypi depName=mypy
-  MYPY_VERSION: "2.4.0"
+  MYPY_VERSION: "2.4.1"
   # renovate: datasource=pypi depName=qrcode
   QRCODE_VERSION: "8.2"
 
