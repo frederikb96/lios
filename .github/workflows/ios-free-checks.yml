@@ -28,9 +28,11 @@ jobs:
             libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
             libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
 
+      # The exact toolchain the runner image ships: the action then uses it as is. Anything else
+      # goes through its Swiftly install, which fails signature verification on a clean runner.
       - uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.4'
+          swift-version: '6.4.1'
 
       - uses: actions/cache@v6
         with:
