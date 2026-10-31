@@ -24,9 +24,9 @@ env:
   # renovate: datasource=pypi depName=pytest
   PYTEST_VERSION: "9.1.1"
   # renovate: datasource=pypi depName=ruff
-  RUFF_VERSION: "0.17.2"
+  RUFF_VERSION: "0.17.3"
   # renovate: datasource=pypi depName=mypy
-  MYPY_VERSION: "2.4.0"
+  MYPY_VERSION: "2.4.1"
   # renovate: datasource=pypi depName=qrcode
   QRCODE_VERSION: "8.2"
 
@@ -85,7 +85,7 @@ jobs:
         with:
           python-version: "3.15"
 
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install dependencies
         working-directory: protocol
@@ -111,7 +111,7 @@ jobs:
         with:
           python-version: "3.15"
 
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install dependencies
         working-directory: protocol
@@ -133,7 +133,7 @@ jobs:
         with:
           python-version: "3.15"
 
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
@@ -158,7 +158,7 @@ jobs:
         with:
           python-version: "3.15"
 
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
@@ -179,7 +179,7 @@ jobs:
         with:
           python-version: "3.15"
 
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
 
       - name: Install dependencies
         run: uv pip install --system -e "./protocol" -e "./relay[dev]"
