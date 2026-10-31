@@ -13,32 +13,21 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # The official image carries the toolchain and its system dependencies.
+    container: swift:6.4.2-noble
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v7
 
-      # Swift's own documented Ubuntu dependency list, plus curl/file/ca-certificates for the
-      # setup action itself.
-      - name: Install Swift toolchain dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            binutils ca-certificates curl file gnupg2 libc6-dev libcurl4-openssl-dev libedit2 \
-            libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev \
-            libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev
-
-      # The exact toolchain the runner image ships: the action then uses it as is. Anything else
-      # goes through its Swiftly install, which fails signature verification on a clean runner.
-      - uses: swift-actions/setup-swift@v3
-        with:
-          swift-version: '6.4.1'
-
       - uses: actions/cache@v6
         with:
           path: ios/LIOSKit/.build
-          key: spm-${{ runner.os }}-${{ hashFiles('ios/LIOSKit/Package.swift') }}
-          restore-keys: spm-${{ runner.os }}-
+          key: spm-container-${{ hashFiles('ios/LIOSKit/Package.swift') }}
+          restore-keys: spm-container-
 
       - name: Build and test the package
         run: |
@@ -52,7 +41,10 @@ jobs:
         run: ./ios/Tooling/parse-swift.sh
 
       - name: Scan for Swift 6 shapes only a Mac would reject
-        run: ./ios/Tooling/swift6-lint.py
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends python3-minimal
+          ./ios/Tooling/swift6-lint.py
 
       - name: Format
         run: |
@@ -69,6 +61,7 @@ jobs:
         run: |
           swift format --in-place --recursive --configuration ios/.swift-format \
             ios/LIOS ios/LIOSShare ios/LIOSNotify ios/LIOSKit/Sources ios/LIOSKit/Tests
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git diff > format.patch
 
       - uses: actions/upload-artifact@v7
