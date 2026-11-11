@@ -1,6 +1,6 @@
 [project]
 name = "lios-relay"
-version = "0.1.11"
+version = "0.1.12"
 description = "LIOS relay -- stores ciphertext, tracks acks, rings doorbells. Cannot read a byte it forwards."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -19,9 +19,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/frederikb96/lios"
-Repository = "https://github.com/frederikb96/lios"
-Issues = "https://github.com/frederikb96/lios/issues"
+Homepage = "https://github.com/frederikberg/lios"
+Repository = "https://github.com/frederikberg/lios"
+Issues = "https://github.com/frederikberg/lios/issues"
 
 [project.optional-dependencies]
 dev = [

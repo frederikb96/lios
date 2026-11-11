@@ -2,7 +2,7 @@ name: lios
 
 services:
   relay:
-    image: ghcr.io/frederikb96/lios-relay:latest
+    image: ghcr.io/frederikberg/lios-relay:latest
     container_name: lios-relay
     ports:
       - "8080:8080"

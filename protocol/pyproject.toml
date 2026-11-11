@@ -1,6 +1,6 @@
 [project]
 name = "lios-protocol"
-version = "0.1.11"
+version = "0.1.12"
 description = "Shared crypto, framing, pairing and wire types for LIOS clients and relay"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -12,9 +12,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/frederikb96/lios"
-Repository = "https://github.com/frederikb96/lios"
-Issues = "https://github.com/frederikb96/lios/issues"
+Homepage = "https://github.com/frederikberg/lios"
+Repository = "https://github.com/frederikberg/lios"
+Issues = "https://github.com/frederikberg/lios/issues"
 
 [project.optional-dependencies]
 dev = [

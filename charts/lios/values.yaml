@@ -11,7 +11,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/frederikb96/lios-relay
+  repository: ghcr.io/frederikberg/lios-relay
   pullPolicy: IfNotPresent
   # -- Image tag. Defaults to the chart's appVersion when empty.
   tag: ""

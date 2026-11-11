@@ -16,8 +16,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/frederikb96/lios-relay
-  CHART_REGISTRY: oci://ghcr.io/frederikb96/charts
+  IMAGE: ghcr.io/frederikberg/lios-relay
+  CHART_REGISTRY: oci://ghcr.io/frederikberg/charts
 
 jobs:
   guard:

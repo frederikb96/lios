@@ -14,9 +14,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/frederikb96/lios"
-Repository = "https://github.com/frederikb96/lios"
-Issues = "https://github.com/frederikb96/lios/issues"
+Homepage = "https://github.com/frederikberg/lios"
+Repository = "https://github.com/frederikberg/lios"
+Issues = "https://github.com/frederikberg/lios/issues"
 
 [project.scripts]
 lios = "lios_linux.__main__:main"
