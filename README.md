@@ -1,7 +1,7 @@
 # LIOS
 
-[![CI](https://github.com/frederikb96/lios/actions/workflows/ci.yaml/badge.svg)](https://github.com/frederikb96/lios/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/release/frederikb96/lios)](https://github.com/frederikb96/lios/releases)
+[![CI](https://github.com/frederikberg/lios/actions/workflows/ci.yaml/badge.svg)](https://github.com/frederikberg/lios/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/frederikberg/lios)](https://github.com/frederikberg/lios/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 LIOS (Linux/iOS Sharing) moves text, images and files between an iPhone and a Linux laptop in
@@ -48,7 +48,7 @@ For development -- hot reload, a throwaway Postgres -- see
 
 ## Installing the Linux client
 
-Every [release](https://github.com/frederikb96/lios/releases) attaches a `.flatpak` bundle
+Every [release](https://github.com/frederikberg/lios/releases) attaches a `.flatpak` bundle
 built from the tagged commit.
 
 ```bash
@@ -64,7 +64,7 @@ from source instead is covered in [`linux/README.md`](linux/README.md#packaging)
 A Helm chart ships in [`charts/lios`](charts/lios) and is published on release:
 
 ```bash
-helm install lios oci://ghcr.io/frederikb96/charts/lios --version 0.1.0
+helm install lios oci://ghcr.io/frederikberg/charts/lios --version 0.1.0
 ```
 
 It expects an external PostgreSQL. See the chart's `values.yaml` for the full set of options.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-11-11
+
+### Changed
+
+- The relay image and the chart default to `ghcr.io/frederikberg/...`, the chart is published to
+  `oci://ghcr.io/frederikberg/charts`, and the README, chart and package metadata link to the
+  `frederikberg` GitHub account. Earlier chart versions need `image.repository` set to keep
+  pulling.
+
 ## [0.1.11] - 2026-10-24
 
 ### Changed
