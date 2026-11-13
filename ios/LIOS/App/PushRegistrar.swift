@@ -99,16 +99,20 @@ final class PushRegistrar: NSObject, UIApplicationDelegate, UNUserNotificationCe
         }
     }
 
+    /// Trades the APNs token for a push relay ticket and hands the ticket to this device's own
+    /// LIOS relay. Runs on every launch (iOS re-delivers the token each time), which also keeps
+    /// the ticket from expiring while the app is in use.
     private static func uploadPushToken(tokenHex: String) async {
         guard let session = LiosSession.loadFromKeychain() else {
             LogBuffer.shared.log(.warning, "APNs token arrived before pairing; dropped", category: "push")
             return
         }
         do {
-            try await session.makeRelayClient().updatePushToken(deviceId: session.deviceId, apnsToken: tokenHex)
-            LogBuffer.shared.log(.info, "APNs token uploaded to relay", category: "push")
+            let ticket = try await PushRelayClient().register(apnsToken: tokenHex)
+            try await session.makeRelayClient().updatePushTicket(deviceId: session.deviceId, pushTicket: ticket)
+            LogBuffer.shared.log(.info, "push ticket uploaded to relay", category: "push")
         } catch {
-            LogBuffer.shared.log(.error, "APNs token upload failed: \(error)", category: "push")
+            LogBuffer.shared.log(.error, "push registration failed: \(error)", category: "push")
         }
     }
 }

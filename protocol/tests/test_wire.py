@@ -13,7 +13,7 @@ from lios_protocol.wire import (
     ItemSummary,
     PairingRedeem,
     PairingSessionCreated,
-    PushTokenUpdate,
+    PushTicketUpdate,
     StreamEvent,
 )
 
@@ -44,7 +44,7 @@ def test_stream_event_defaults_type() -> None:
 def test_device_info_round_trips_through_json() -> None:
     device = DeviceInfo(
         id=uuid4(), display_name="A Linux laptop", platform="linux",
-        created_at=datetime.now(UTC), has_push_token=False,
+        created_at=datetime.now(UTC), has_push_ticket=False,
     )
     assert DeviceInfo.model_validate_json(device.model_dump_json()) == device
 
@@ -58,4 +58,4 @@ def test_item_created_and_device_paired_and_the_rest_construct() -> None:
     ItemCreated(id=uuid4(), created_at=datetime.now(UTC))
     DevicePaired(device_id=uuid4(), device_token="opaque-token")
     PairingSessionCreated(pairing_code="ABCD1234", expires_at=datetime.now(UTC))
-    PushTokenUpdate(apns_token="deadbeef")
+    PushTicketUpdate(push_ticket="opaque-ticket")

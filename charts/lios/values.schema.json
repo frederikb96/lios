@@ -84,7 +84,7 @@
     },
     "config": {
       "type": "object",
-      "description": "Freeform, deep-merged onto config/config.yaml in the image. Mirrors that file's structure so new sections can be added without chart changes. No required key: the image's own default config already resolves the database URL and every apns.* field from the Secret via ${VAR} placeholders.",
+      "description": "Freeform, deep-merged onto config/config.yaml in the image. Mirrors that file's structure so new sections can be added without chart changes. No required key: the image's own default config already resolves the database URL from the Secret via a ${VAR} placeholder.",
       "additionalProperties": true
     },
     "configOverridePath": { "type": "string", "minLength": 1 },
@@ -92,21 +92,15 @@
       "type": "object",
       "properties": {
         "create": { "type": "boolean" },
-        "databaseUrl": { "type": "string" },
-        "apnsKeyId": { "type": "string" },
-        "apnsTeamId": { "type": "string" },
-        "apnsAuthKeyB64": { "type": "string" }
+        "databaseUrl": { "type": "string" }
       }
     },
     "existingSecret": { "type": "string" },
     "existingSecretKeys": {
       "type": "object",
-      "required": ["databaseUrl", "apnsKeyId", "apnsTeamId", "apnsAuthKeyB64"],
+      "required": ["databaseUrl"],
       "properties": {
-        "databaseUrl": { "type": "string", "minLength": 1 },
-        "apnsKeyId": { "type": "string", "minLength": 1 },
-        "apnsTeamId": { "type": "string", "minLength": 1 },
-        "apnsAuthKeyB64": { "type": "string", "minLength": 1 }
+        "databaseUrl": { "type": "string", "minLength": 1 }
       }
     },
     "ingress": {

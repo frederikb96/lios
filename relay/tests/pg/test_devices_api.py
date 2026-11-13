@@ -75,8 +75,8 @@ async def test_pairing_rejects_unknown_code(client: AsyncClient) -> None:
     assert resp.status_code == 401
 
 
-async def test_set_push_token_for_own_device(client: AsyncClient, phone_token: str) -> None:
-    """A device that paired through the API can register a push token for itself."""
+async def test_set_push_ticket_for_own_device(client: AsyncClient, phone_token: str) -> None:
+    """A device that paired through the API can store a push ticket for itself."""
     session_resp = await client.post(
         "/api/devices/pairing-sessions", headers=auth_headers(phone_token)
     )
@@ -88,14 +88,14 @@ async def test_set_push_token_for_own_device(client: AsyncClient, phone_token: s
     device_id, token = paired.json()["device_id"], paired.json()["device_token"]
 
     resp = await client.post(
-        f"/api/devices/{device_id}/push-token",
-        json={"apns_token": "deadbeef"},
+        f"/api/devices/{device_id}/push-ticket",
+        json={"push_ticket": "opaque-ticket"},
         headers=auth_headers(token),
     )
     assert resp.status_code == 204
 
 
-async def test_cannot_set_push_token_for_a_different_device(
+async def test_cannot_set_push_ticket_for_a_different_device(
     client: AsyncClient, laptop_token: str, phone_token: str
 ) -> None:
     session_resp = await client.post(
@@ -109,8 +109,8 @@ async def test_cannot_set_push_token_for_a_different_device(
     other_device_id = paired.json()["device_id"]
 
     resp = await client.post(
-        f"/api/devices/{other_device_id}/push-token",
-        json={"apns_token": "deadbeef"},
+        f"/api/devices/{other_device_id}/push-ticket",
+        json={"push_ticket": "opaque-ticket"},
         headers=auth_headers(phone_token),
     )
     assert resp.status_code == 403

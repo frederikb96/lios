@@ -50,16 +50,15 @@ def test_env_override_wins_over_default(monkeypatch: pytest.MonkeyPatch) -> None
     assert config.retention.max_items == 5
 
 
-def test_apns_is_unconfigured_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_push_points_at_the_shared_relay_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIOS_DATABASE_URL", "postgresql://user:pass@localhost/lios")
     config = get_config()
-    assert config.apns.configured is False
+    assert config.push.enabled is True
+    assert config.push.relay_url == "https://push.frederikberg.net"
 
 
-def test_apns_is_configured_once_every_field_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_push_is_disabled_by_an_empty_relay_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIOS_DATABASE_URL", "postgresql://user:pass@localhost/lios")
-    monkeypatch.setenv("LIOS_APNS_KEY_ID", "KEY123")
-    monkeypatch.setenv("LIOS_APNS_TEAM_ID", "TEAM123")
-    monkeypatch.setenv("LIOS_APNS_AUTH_KEY_B64", "c29tZWtleQ==")
+    monkeypatch.setenv("LIOS_PUSH_RELAY_URL", "")
     config = get_config()
-    assert config.apns.configured is True
+    assert config.push.enabled is False

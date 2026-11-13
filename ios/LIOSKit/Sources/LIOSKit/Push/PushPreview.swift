@@ -9,7 +9,7 @@ import Foundation
 /// never holds the group key, which is the whole point of it. This is this app's proposed
 /// extension to the wire contract: the sender seals a `PushPreview` under the same group key,
 /// sends it alongside the item as opaque bytes the relay stores and forwards verbatim inside the
-/// APNs payload's `sealed_preview` field (see `PushPayload`), and the relay never has to
+/// push blob's `sealed_preview` field (see `PushPayload`), and the relay never has to
 /// understand it to relay it. If the relay does not yet carry this field, `PushPayload.decode`
 /// simply finds no preview and the NSE falls back to a generic banner — nothing breaks, but the
 /// point of it — seeing what arrived without opening the app — needs the relay and the Linux
@@ -57,13 +57,21 @@ public struct PushPreview: Codable, Sendable {
     }
 }
 
-/// The custom (non-`aps`) fields this app expects on an APNs payload, and how to read them.
-/// Kept as one place so the NSE, `NotificationRouter` and any future debug tooling agree on the
-/// field names.
+/// What a push carries and how to read it. Kept as one place so the NSE, `NotificationRouter` and
+/// any future debug tooling agree on the names.
+///
+/// The push relay delivers `{"v": 1, "b": "<blob>"}` under `payloadKey`; the blob is base64 of a
+/// JSON object holding the three keys below, built by `lios_protocol.push.build_push_blob`.
 public enum PushPayload {
+    /// Mirrors `lios_protocol.headers.PUSH_RELAY_APP`: the app name at the push relay, which is
+    /// also the key the push relay files the blob under.
+    public static let appName = "lios"
     public static let itemIdKey = "item_id"
     public static let senderDeviceIdKey = "sender_device_id"
     public static let sealedPreviewKey = "sealed_preview"
+
+    /// The only envelope version this build understands.
+    private static let envelopeVersion = 1
 
     public struct Decoded: Sendable {
         public let itemId: UUID
@@ -74,20 +82,25 @@ public enum PushPayload {
         public let sealedPreview: Data
     }
 
-    /// Pull the push's custom fields out of a raw userInfo dictionary. Returns `nil` when
-    /// `item_id` or `sender_device_id` is missing or not a valid UUID — a malformed or foreign
-    /// push, which the NSE and the router should both pass through unmodified rather than crash
-    /// on.
+    /// Pull the push blob out of a raw userInfo dictionary. Returns `nil` when the envelope or
+    /// the blob is missing or malformed, or `item_id` / `sender_device_id` is not a valid UUID —
+    /// a foreign push, which the NSE and the router should both pass through unmodified rather
+    /// than crash on.
     public static func decode(userInfo: [AnyHashable: Any]) -> Decoded? {
         guard
-            let idString = userInfo[itemIdKey] as? String, let itemId = UUID(uuidString: idString),
-            let senderString = userInfo[senderDeviceIdKey] as? String,
+            let envelope = userInfo[appName] as? [String: Any],
+            (envelope["v"] as? Int) == envelopeVersion,
+            let blobB64 = envelope["b"] as? String,
+            let blob = Data(base64Encoded: blobB64),
+            let fields = try? JSONSerialization.jsonObject(with: blob) as? [String: Any],
+            let idString = fields[itemIdKey] as? String, let itemId = UUID(uuidString: idString),
+            let senderString = fields[senderDeviceIdKey] as? String,
             let senderDeviceId = UUID(uuidString: senderString)
         else {
             return nil
         }
         let sealedPreview: Data
-        if let previewB64 = userInfo[sealedPreviewKey] as? String, let decoded = Data(base64Encoded: previewB64) {
+        if let previewB64 = fields[sealedPreviewKey] as? String, let decoded = Data(base64Encoded: previewB64) {
             sealedPreview = decoded
         } else {
             sealedPreview = Data()

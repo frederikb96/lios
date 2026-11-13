@@ -60,7 +60,7 @@ Name of the ServiceAccount to use.
 {{- end }}
 
 {{/*
-Name of the Secret to reference for the database URL / APNs credentials.
+Name of the Secret to reference for the database URL.
 */}}
 {{- define "lios.secretName" -}}
 {{- if .Values.existingSecret }}

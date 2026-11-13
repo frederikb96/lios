@@ -117,20 +117,20 @@ podDisruptionBudget:
 
 # -- Restricts egress traffic from the pod. Only useful with a CNI that enforces
 # NetworkPolicy (e.g. Cilium, Calico). The relay only ever makes outbound connections to
-# PostgreSQL and to Apple's APNs (if push is configured), and serves inbound HTTP/WebSocket
+# PostgreSQL and to the push relay (if push is configured), and serves inbound HTTP/WebSocket
 # on `service.port` only, so this is a reasonable workload to lock down.
 networkPolicy:
   # -- When enabled with no egress rules configured below, the pod loses ALL outbound
   # connectivity except DNS (empty `egress: []` under `policyTypes: [Egress]` means deny-all,
-  # not allow-all) -- it will not be able to reach PostgreSQL or APNs. Always set
+  # not allow-all) -- it will not be able to reach PostgreSQL or the push relay. Always set
   # `networkPolicy.egress` to your PostgreSQL destination and to the public internet (for
-  # APNs) in the same values file where you flip this on.
+  # the push relay) in the same values file where you flip this on.
   enabled: false
   # -- Allow DNS resolution (kube-dns/CoreDNS) -- almost always required alongside custom
   # egress rules below.
   allowDNS: true
   # -- Egress rules, `NetworkPolicySpec.egress` syntax. Narrow this to your PostgreSQL
-  # destination and to APNs (api.push.apple.com, 443).
+  # destination and to the push relay (push.frederikberg.net, 443).
   egress: []
   # - to:
   #     - podSelector:
@@ -153,9 +153,9 @@ networkPolicy:
 # want to change; everything else falls back to the image's built-in defaults.
 #
 # This section has no required key: the image's bundled config.yaml already resolves
-# `database.url` and every `apns.*` field from the Secret below via `${VAR}` placeholders --
-# not duplicated here. Set values here only to change something else, e.g.
-# `retention.max_items` or `server.log_level`.
+# `database.url` from the Secret below via a `${VAR}` placeholder -- not duplicated here.
+# Set values here only to change something else, e.g. `retention.max_items`,
+# `server.log_level` or `push.relay_url`.
 config: {}
 # retention:
 #   max_items: 100
@@ -175,13 +175,6 @@ secret:
   # "postgresql+asyncpg://lios:<password>@<host>:5432/lios". Required -- there is no usable
   # default for an external database.
   databaseUrl: ""
-  # -- APNs push, all optional. The relay starts and serves every endpoint fine with these
-  # left empty; it simply sends no push to iOS devices in that case.
-  apnsKeyId: ""
-  apnsTeamId: ""
-  # -- The .p8 private key's PEM contents, base64-encoded (a PEM has embedded newlines,
-  # awkward to carry through a values file or Kubernetes Secret literal otherwise).
-  apnsAuthKeyB64: ""
 
 # -- Name of a pre-existing Secret to use instead of `secret.create`. Must contain the keys
 # named in `existingSecretKeys` below.
@@ -189,9 +182,6 @@ existingSecret: ""
 
 existingSecretKeys:
   databaseUrl: LIOS_DATABASE_URL
-  apnsKeyId: LIOS_APNS_KEY_ID
-  apnsTeamId: LIOS_APNS_TEAM_ID
-  apnsAuthKeyB64: LIOS_APNS_AUTH_KEY_B64
 
 ingress:
   # -- The relay carries its own bearer-token auth (see the root README) -- no

@@ -66,7 +66,7 @@ public struct DeviceInfo: Codable, Sendable, Identifiable {
     public let displayName: String
     public let platform: LiosPlatform
     public let createdAt: Date
-    public let hasPushToken: Bool
+    public let hasPushTicket: Bool
 }
 
 /// Mirrors `lios_protocol.wire.PairingSessionCreated` — the response to
@@ -114,12 +114,12 @@ public struct DevicePaired: Codable, Sendable {
     public let deviceToken: String
 }
 
-/// Mirrors `lios_protocol.wire.PushTokenUpdate` — the request body for
-/// `POST /api/devices/{id}/push-token`.
-public struct PushTokenUpdate: Codable, Sendable {
-    public let apnsToken: String
+/// Mirrors `lios_protocol.wire.PushTicketUpdate` — the request body for
+/// `POST /api/devices/{id}/push-ticket`.
+public struct PushTicketUpdate: Codable, Sendable {
+    public let pushTicket: String
 
-    public init(apnsToken: String) {
-        self.apnsToken = apnsToken
+    public init(pushTicket: String) {
+        self.pushTicket = pushTicket
     }
 }

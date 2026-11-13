@@ -15,7 +15,7 @@ dependencies = [
     "alembic>=1.14.0",
     "pydantic>=2.0.0",
     "pyyaml>=6.0.0",
-    "aioapns>=3.0",
+    "httpx>=0.28.0",
 ]
 
 [project.urls]
@@ -28,7 +28,6 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-timeout>=2.3.0",
-    "httpx>=0.28.0",
     "websockets>=13.0",
     "testcontainers[postgres]>=4.9.0",
     "ruff>=0.8.0",
@@ -67,7 +66,3 @@ python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = ["aioapns.*"]
-ignore_missing_imports = true

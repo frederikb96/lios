@@ -81,7 +81,7 @@ def _resolve_placeholders(value: Any) -> Any:
     """Recursively resolve ${VAR} placeholders against the environment.
 
     An unset variable resolves to "" rather than raising -- some placeholders are
-    legitimately optional (apns.*), and emptiness is validated per-field where it actually
+    legitimately optional, and emptiness is validated per-field where it actually
     matters (DatabaseConfig.url) rather than blanket-enforced here.
     """
     if isinstance(value, dict):
@@ -212,20 +212,17 @@ class PairingConfig(BaseModel):
     code_ttl_seconds: int
 
 
-class ApnsConfig(BaseModel):
-    """APNs push configuration. Every field may be empty -- push is then simply disabled,
-    never a startup failure, since a fresh deployment starts with no key configured."""
+class PushConfig(BaseModel):
+    """Where iOS pushes go. An empty `relay_url` disables push, never a startup failure."""
 
-    key_id: str = ""
-    team_id: str = ""
-    topic: str = ""
-    auth_key_b64: str = ""
-    send_timeout_seconds: int = 10
+    relay_url: str
+    send_timeout_seconds: int
+    ttl_seconds: int
 
     @property
-    def configured(self) -> bool:
-        """Whether every field push actually needs is present."""
-        return bool(self.key_id and self.team_id and self.topic and self.auth_key_b64)
+    def enabled(self) -> bool:
+        """Whether a push relay is configured."""
+        return bool(self.relay_url)
 
 
 class RelayConfig(BaseModel):
@@ -242,7 +239,7 @@ class RelayConfig(BaseModel):
     items: ItemsConfig
     retention: RetentionConfig
     pairing: PairingConfig
-    apns: ApnsConfig
+    push: PushConfig
 
 
 _config_instance: RelayConfig | None = None
@@ -270,7 +267,7 @@ def get_config() -> RelayConfig:
                 items=ItemsConfig(**(cfg.get("items") or {})),
                 retention=RetentionConfig(**(cfg.get("retention") or {})),
                 pairing=PairingConfig(**(cfg.get("pairing") or {})),
-                apns=ApnsConfig(**(cfg.get("apns") or {})),
+                push=PushConfig(**(cfg.get("push") or {})),
             )
         except ValidationError as exc:
             raise ConfigError(f"Invalid configuration: {exc}") from exc
