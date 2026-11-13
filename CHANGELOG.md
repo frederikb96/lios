@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- iOS push goes through the shared push relay instead of the relay's own Apple credential. The
+  app registers its APNs token with the push relay (compiled in) and hands the relay only the
+  returned ticket, so a self-hosted relay needs no Apple key and never stores a raw device
+  token. The push carries its item id, sender device id and sealed preview inside one blob
+  that the notification extension decodes.
+- `POST /api/devices/{id}/push-token` is `POST /api/devices/{id}/push-ticket` with body
+  `{"push_ticket": ...}`; the `apns.*` configuration, the `LIOS_APNS_*` variables and the
+  chart's APNs secret keys are replaced by `push.relay_url` (`LIOS_PUSH_RELAY_URL`; empty
+  disables push).
+
+### Upgrading
+
+- A migration drops the stored APNs tokens. Each iPhone sends a ticket the next time the new
+  app build starts, and gets no push until then.
+
 ## [0.1.12] - 2026-11-11
 
 ### Changed

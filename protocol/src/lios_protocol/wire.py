@@ -66,7 +66,7 @@ class DeviceInfo(BaseModel):
     display_name: str
     platform: Platform
     created_at: datetime
-    has_push_token: bool
+    has_push_ticket: bool
 
 
 class PairingSessionCreated(BaseModel):
@@ -108,7 +108,12 @@ class DevicePaired(BaseModel):
     device_token: str
 
 
-class PushTokenUpdate(BaseModel):
-    """Request body for `POST /api/devices/{id}/push-token`."""
+class PushTicketUpdate(BaseModel):
+    """Request body for `POST /api/devices/{id}/push-ticket`.
 
-    apns_token: str
+    `push_ticket` is the opaque ticket the shared push relay issued when the device
+    registered its APNs token there. The relay stores and forwards it verbatim and never
+    sees the APNs token itself.
+    """
+
+    push_ticket: str

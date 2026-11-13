@@ -1,124 +1,127 @@
-"""Sending APNs pushes for a newly arrived item -- the one place in this service that
-speaks to APNs.
+"""Sending push for a newly arrived item -- the one place in this service that speaks to the
+shared push relay.
 
-The relay can never read an item's content, so the push it sends is deliberately generic:
-a plain alert plus `mutable-content: 1` and the item id, sender device id, and an optional
-opaque `sealed_preview` riding alongside `aps` (never inside it, which is reserved). That
-combination is what lets an iOS Notification Service Extension intercept the push, decrypt
-`sealed_preview` on-device under the shared group key, and rewrite the banner before it is
-shown -- the extension never fetches the item's own payload to do this. The alert text set
-here is only ever seen if the extension does not run for some reason -- it must never claim
-to say what the item is.
+The LIOS relay holds no Apple credential and no APNs device token. Each iOS device registers
+its token at the push relay itself and hands this service the resulting ticket; a push is one
+`POST /v1/push` carrying that ticket and a blob. The push relay forwards the blob to Apple
+unopened and the iOS notification extension decodes it (`lios_protocol.push`).
+
+The relay can never read an item's content, so the push is deliberately generic: the push
+relay's own fallback banner, plus the item id, sender device id and the opaque
+`sealed_preview` inside the blob. That combination is what lets the notification extension
+decrypt the preview on-device under the shared group key and rewrite the banner before it is
+shown -- the extension never fetches the item's own payload to do this.
 
 Best-effort throughout: a push failure must never turn an otherwise-successful
 `POST /api/items` into an error response, since the item itself was already stored and
-every other paired device already has (or will get) it through the WebSocket stream. See
-:func:`send_new_item_push`'s own doc comment for exactly what "best-effort" means here.
+every other paired device already has (or will get) it through the WebSocket stream.
 """
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import uuid
+from dataclasses import dataclass
 
-from aioapns import APNs, NotificationRequest, PushType
-from aioapns.common import NotificationResult
-from lios_protocol.headers import (
-    PUSH_ITEM_ID_KEY,
-    PUSH_SEALED_PREVIEW_KEY,
-    PUSH_SENDER_DEVICE_ID_KEY,
-)
+import httpx
+from lios_protocol.headers import PUSH_RELAY_APP
+from lios_protocol.push import build_push_blob
 
-from lios_relay.config import ApnsConfig
+from lios_relay.config import PushConfig
 
 logger = logging.getLogger(__name__)
 
-#: The status APNs answers with for a token it will never accept again -- see Apple's
-#: "Handling Notification Responses from APNs".
-_GONE_STATUS = "410"
-_PERMANENTLY_BAD_REASONS = frozenset({"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"})
+#: Statuses of `POST /v1/push` after which the ticket is useless for good: 410 means Apple
+#: refused the device token permanently, 401 that the ticket is invalid or expired. Either
+#: way the phone has to register again.
+_TICKET_DEAD_STATUSES = frozenset({401, 410})
+_PAYLOAD_TOO_LARGE = 413
 
 
 class PushUnavailable(RuntimeError):
-    """No usable APNs key configured, or no token was given to send to."""
+    """No push relay configured, or no ticket was given to send to."""
+
+
+@dataclass(frozen=True)
+class PushTarget:
+    """One device to push to: its id (to clear a dead ticket) and its push relay ticket."""
+
+    device_id: uuid.UUID
+    ticket: str
 
 
 async def send_new_item_push(
     *,
-    config: ApnsConfig,
-    tokens: list[str],
+    config: PushConfig,
+    targets: list[PushTarget],
     item_id: uuid.UUID,
     sender_device_id: uuid.UUID,
     sealed_preview: bytes | None,
-) -> list[str]:
-    """Push a generic "new item" notification to every APNs token in `tokens`.
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[uuid.UUID]:
+    """Push a generic "new item" notification to every device in `targets`.
 
-    `sealed_preview`, if the sender attached one, is forwarded base64-encoded exactly as
-    received -- this module has no group key and never opens it. Omitted entirely rather
-    than sent empty when absent, so the extension's own "was one attached at all" check
-    stays a simple key lookup.
+    `sealed_preview`, if the sender attached one, rides inside the blob exactly as received
+    -- this module has no group key and never opens it. A push relay that refuses the blob as
+    too large gets it again without the preview: a generic banner beats none.
 
-    Returns the subset of `tokens` APNs reported permanently gone (`BadDeviceToken`,
-    `Unregistered`, or a 410 status) -- the caller owns removing those from the device
-    registry, since this module has no database access of its own.
+    Returns the ids of the devices whose ticket the push relay rejected for good -- the
+    caller owns clearing those, since this module has no database access of its own.
 
     Raises:
-        PushUnavailable: no APNs key is configured, or `tokens` is empty. Both are normal
-            outcomes (a fresh deployment with no key yet; every registered device is Linux),
+        PushUnavailable: no push relay is configured, or `targets` is empty. Both are normal
+            outcomes (a self-hosted relay with push off; every registered device is Linux),
             never logged as an error by the caller.
     """
-    if not config.configured:
-        raise PushUnavailable("no APNs key is configured")
-    if not tokens:
-        raise PushUnavailable("no device token to push to")
+    if not config.enabled:
+        raise PushUnavailable("no push relay is configured")
+    if not targets:
+        raise PushUnavailable("no device ticket to push to")
 
-    key = base64.b64decode(config.auth_key_b64).decode("utf-8")
-    message: dict[str, object] = {
-        "aps": {
-            "alert": {"title": "LIOS", "body": "New item"},
-            "mutable-content": 1,
-            "sound": "default",
-        },
-        PUSH_ITEM_ID_KEY: str(item_id),
-        PUSH_SENDER_DEVICE_ID_KEY: str(sender_device_id),
-    }
+    url = config.relay_url.rstrip("/") + "/v1/push"
+    blobs = [
+        build_push_blob(
+            item_id=item_id, sender_device_id=sender_device_id, sealed_preview=sealed_preview
+        )
+    ]
     if sealed_preview:
-        message[PUSH_SEALED_PREVIEW_KEY] = base64.b64encode(sealed_preview).decode("ascii")
-
-    client = APNs(
-        key=key, key_id=config.key_id, team_id=config.team_id, topic=config.topic,
-        use_sandbox=False,
-    )
-
-    async def _send_one(token: str) -> tuple[str, NotificationResult | BaseException]:
-        request = NotificationRequest(
-            device_token=token, message=message, push_type=PushType.ALERT, priority=10,
+        blobs.append(
+            build_push_blob(item_id=item_id, sender_device_id=sender_device_id, sealed_preview=None)
         )
-        try:
-            return token, await client.send_notification(request)
-        except Exception as e:  # noqa: BLE001 - reported per-token below, never raised here
-            return token, e
 
-    try:
-        results = await asyncio.wait_for(
-            asyncio.gather(*(_send_one(t) for t in tokens)),
-            timeout=config.send_timeout_seconds,
-        )
-    finally:
-        client.pool.close()
+    async with httpx.AsyncClient(
+        timeout=config.send_timeout_seconds, transport=transport
+    ) as client:
 
-    gone: list[str] = []
-    for token, outcome in results:
-        if isinstance(outcome, BaseException):
-            logger.warning("push failed for a device token: %s", outcome)
-            continue
-        if outcome.is_successful:
-            continue
-        if outcome.status == _GONE_STATUS or outcome.description in _PERMANENTLY_BAD_REASONS:
-            gone.append(token)
-        else:
-            logger.warning("APNs rejected a push: %s %s", outcome.status, outcome.description)
+        async def _send_one(target: PushTarget) -> uuid.UUID | None:
+            """Returns the device id when its ticket is dead, otherwise None."""
+            try:
+                for blob in blobs:
+                    response = await client.post(
+                        url,
+                        json={
+                            "app": PUSH_RELAY_APP,
+                            "ticket": target.ticket,
+                            "type": "alert",
+                            "blob": blob,
+                            "ttl_seconds": config.ttl_seconds,
+                        },
+                    )
+                    if response.status_code != _PAYLOAD_TOO_LARGE:
+                        break
+                    logger.warning("push relay refused the blob as too large; retrying without it")
+            except httpx.HTTPError as e:
+                logger.warning("push relay unreachable: %s", e)
+                return None
 
-    return gone
+            if response.status_code == 202:
+                return None
+            if response.status_code in _TICKET_DEAD_STATUSES:
+                return target.device_id
+            logger.warning("push relay answered %s", response.status_code)
+            return None
+
+        results = await asyncio.gather(*(_send_one(t) for t in targets))
+
+    return [device_id for device_id in results if device_id is not None]

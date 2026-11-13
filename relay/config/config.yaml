@@ -34,13 +34,14 @@ pairing:
   # How long a pairing code minted by POST /api/devices/pairing-sessions stays redeemable.
   code_ttl_seconds: 600
 
-# APNs push for iOS devices. Optional -- the relay starts and serves every other endpoint
-# fine with no key configured; POST /api/items simply sends no push in that case. auth_key_b64
-# is the .p8 private key's PEM contents, base64-encoded (a PEM has embedded newlines, which
-# are awkward to carry through a plain env var or .env file).
-apns:
-  key_id: "${LIOS_APNS_KEY_ID}"
-  team_id: "${LIOS_APNS_TEAM_ID}"
-  topic: com.frederikberg.lios
-  auth_key_b64: "${LIOS_APNS_AUTH_KEY_B64}"
+# Push for iOS devices, sent through the shared push relay (a separate service that holds the
+# Apple credential). The relay never learns an item's content: it forwards a small blob to
+# Apple, and the iOS app opens it. Leave relay_url empty to send no push at all; every other
+# endpoint works the same. The iOS app registers with the relay URL compiled into it, so a
+# server pointed anywhere else only pushes to devices registered there.
+push:
+  relay_url: https://push.frederikberg.net
   send_timeout_seconds: 10
+  # How long Apple holds a push for an offline phone. 0 = deliver now or never; the phone
+  # catches up on missed items when it next connects anyway.
+  ttl_seconds: 0

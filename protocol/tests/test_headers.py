@@ -19,3 +19,7 @@ def test_push_payload_field_names() -> None:
     assert headers.PUSH_ITEM_ID_KEY == "item_id"
     assert headers.PUSH_SENDER_DEVICE_ID_KEY == "sender_device_id"
     assert headers.PUSH_SEALED_PREVIEW_KEY == "sealed_preview"
+
+
+def test_push_relay_app_name() -> None:
+    assert headers.PUSH_RELAY_APP == "lios"

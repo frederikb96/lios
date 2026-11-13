@@ -70,8 +70,3 @@ def test_stream_url_rejects_a_non_http_scheme() -> None:
 
 def test_auth_header_carries_a_bearer_token() -> None:
     assert endpoints.auth_header("secret-token") == {"Authorization": "Bearer secret-token"}
-
-
-def test_push_token_url_quotes_the_device_id() -> None:
-    url = endpoints.push_token_url("https://relay.example.com", "abc/def")
-    assert url == "https://relay.example.com/api/devices/abc%2Fdef/push-token"

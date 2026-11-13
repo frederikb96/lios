@@ -60,14 +60,14 @@ async def list_other_device_ids(session: AsyncSession, exclude: uuid.UUID) -> li
     return list(result.scalars().all())
 
 
-async def set_push_token(
-    session: AsyncSession, device_id: uuid.UUID, apns_token: str
+async def set_push_ticket(
+    session: AsyncSession, device_id: uuid.UUID, push_ticket: str | None
 ) -> Device | None:
-    """Record (or replace) a device's APNs token. Returns None if the device does not exist."""
+    """Record (or, with None, clear) a device's push ticket. None if the device is unknown."""
     device = await session.get(Device, device_id)
     if device is None:
         return None
-    device.apns_token = apns_token
+    device.push_ticket = push_ticket
     return device
 
 

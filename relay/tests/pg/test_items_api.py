@@ -18,7 +18,12 @@ from lios_protocol.headers import (
 import lios_relay.api.items as items_module
 from lios_relay.database.connection import DatabaseConnection
 from lios_relay.database.models import Item
-from lios_relay.database.repository import create_device, generate_device_token, get_device_by_token
+from lios_relay.database.repository import (
+    create_device,
+    generate_device_token,
+    get_device,
+    get_device_by_token,
+)
 from tests.pg.conftest import auth_headers, new_uuid
 
 
@@ -339,3 +344,59 @@ async def test_targeted_item_rejects_unknown_target(
         headers=_item_headers(laptop_token),
     )
     assert resp.status_code == 404
+
+
+async def _ios_device_with_ticket(
+    db: DatabaseConnection, ticket: str | None
+) -> tuple[uuid.UUID, str]:
+    token = generate_device_token()
+    async with db.session() as session:
+        device = await create_device(session, display_name="Phone", platform="ios", token=token)
+        device.push_ticket = ticket
+        return device.id, token
+
+
+async def test_item_push_goes_to_each_ios_recipient_ticket(
+    client: AsyncClient,
+    laptop_token: str,
+    migrated_db: DatabaseConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The push carries the recipient's ticket and the item's ids; a recipient without a
+    ticket (an iOS device whose app has not registered yet) is left out."""
+    phone_id, _ = await _ios_device_with_ticket(migrated_db, "ticket-1")
+    await _ios_device_with_ticket(migrated_db, None)
+    calls: list[dict] = []
+
+    async def fake_push(**kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(items_module, "send_new_item_push", fake_push)
+
+    created = await _post_item(client, laptop_token, b"x", sealed_preview=b"preview")
+
+    assert len(calls) == 1
+    assert [(t.device_id, t.ticket) for t in calls[0]["targets"]] == [(phone_id, "ticket-1")]
+    assert str(calls[0]["item_id"]) == created["id"]
+    assert calls[0]["sealed_preview"] == b"preview"
+
+
+async def test_ticket_the_push_relay_rejects_is_cleared(
+    client: AsyncClient,
+    laptop_token: str,
+    migrated_db: DatabaseConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phone_id, _ = await _ios_device_with_ticket(migrated_db, "dead-ticket")
+
+    async def fake_push(**kwargs):
+        return [phone_id]
+
+    monkeypatch.setattr(items_module, "send_new_item_push", fake_push)
+
+    await _post_item(client, laptop_token, b"x")
+
+    async with migrated_db.session() as session:
+        device = await get_device(session, phone_id)
+        assert device is not None and device.push_ticket is None

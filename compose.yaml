@@ -10,9 +10,6 @@ services:
       - ./relay/config-custom:/app/relay/config-custom:ro,Z
     environment:
       LIOS_DATABASE_URL: "postgresql+asyncpg://lios:${POSTGRES_PASSWORD}@postgres:5432/lios"
-      LIOS_APNS_KEY_ID: "${LIOS_APNS_KEY_ID:-}"
-      LIOS_APNS_TEAM_ID: "${LIOS_APNS_TEAM_ID:-}"
-      LIOS_APNS_AUTH_KEY_B64: "${LIOS_APNS_AUTH_KEY_B64:-}"
     depends_on:
       postgres:
         condition: service_healthy

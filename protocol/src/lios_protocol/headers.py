@@ -23,7 +23,13 @@ TARGET_DEVICE_ID_QUERY_PARAM = "target_device_id"
 #: separate query rather than a wider version of the default one.
 SENT_QUERY_PARAM = "sent"
 
-#: Custom (non-`aps`) fields on the APNs payload `lios_relay.push` sends.
+#: The app name LIOS is registered under at the shared push relay. The iOS app names it when
+#: it registers its APNs token, the LIOS server names it on every push, and the push relay
+#: also uses it as the key under which the push blob reaches the notification extension.
+PUSH_RELAY_APP = "lios"
+
+#: Fields of the push blob the LIOS server hands the push relay (base64 of a JSON object with
+#: these keys). The push relay delivers the blob to the notification extension unopened.
 PUSH_ITEM_ID_KEY = "item_id"
 PUSH_SENDER_DEVICE_ID_KEY = "sender_device_id"
 PUSH_SEALED_PREVIEW_KEY = "sealed_preview"

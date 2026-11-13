@@ -11,7 +11,7 @@ import Foundation
 /// three header names below mirror `lios_protocol.headers` exactly.
 ///
 /// iOS never opens `GET /api/stream` — that is the Linux client's long-lived connection. This
-/// app instead learns about new items from an APNs push and fetches on demand, which is also why
+/// app instead learns about new items from a push and fetches on demand, which is also why
 /// this client has no WebSocket or SSE transport: everything here is a single request/response,
 /// which is also what keeps it buildable and testable on Linux.
 public final class RelayClient: Sendable {
@@ -20,8 +20,8 @@ public final class RelayClient: Sendable {
         static func bootstrap(base: URL) -> URL { base.appendingPathComponent("api/devices/bootstrap") }
         static func pairingSessions(base: URL) -> URL { base.appendingPathComponent("api/devices/pairing-sessions") }
         static func pair(base: URL) -> URL { base.appendingPathComponent("api/devices/pair") }
-        static func pushToken(base: URL, deviceId: UUID) -> URL {
-            base.appendingPathComponent("api/devices/\(deviceId.uuidString)/push-token")
+        static func pushTicket(base: URL, deviceId: UUID) -> URL {
+            base.appendingPathComponent("api/devices/\(deviceId.uuidString)/push-ticket")
         }
         static func items(base: URL) -> URL { base.appendingPathComponent("api/items") }
         static func item(base: URL, id: UUID) -> URL { base.appendingPathComponent("api/items/\(id.uuidString)") }
@@ -103,12 +103,13 @@ public final class RelayClient: Sendable {
         return try await send(request, decoding: DevicePaired.self)
     }
 
-    /// `POST /api/devices/{id}/push-token` — register (or replace) this device's APNs token.
-    public func updatePushToken(deviceId: UUID, apnsToken: String) async throws {
-        var request = authenticatedRequest(url: Endpoint.pushToken(base: baseURL, deviceId: deviceId))
+    /// `POST /api/devices/{id}/push-ticket` — store (or replace) the ticket the push relay issued
+    /// for this device. The relay never learns the APNs token behind it.
+    public func updatePushTicket(deviceId: UUID, pushTicket: String) async throws {
+        var request = authenticatedRequest(url: Endpoint.pushTicket(base: baseURL, deviceId: deviceId))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try encoder.encode(PushTokenUpdate(apnsToken: apnsToken))
+        request.httpBody = try encoder.encode(PushTicketUpdate(pushTicket: pushTicket))
         _ = try await send(request)
     }
 

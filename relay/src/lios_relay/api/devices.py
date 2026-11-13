@@ -1,5 +1,5 @@
 """Device registry and pairing: `POST /api/devices/bootstrap`, `POST
-/api/devices/pairing-sessions`, `POST /api/devices/pair`, `POST /api/devices/{id}/push-token`.
+/api/devices/pairing-sessions`, `POST /api/devices/pair`, `POST /api/devices/{id}/push-ticket`.
 
 The group key never appears anywhere in this module -- it travels only inside the QR payload
 `lios_protocol.pairing` builds, entirely client-side. All the relay ever mints or redeems is
@@ -18,7 +18,7 @@ from lios_protocol.wire import (
     DevicePaired,
     PairingRedeem,
     PairingSessionCreated,
-    PushTokenUpdate,
+    PushTicketUpdate,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +31,7 @@ from lios_relay.database.repository import (
     generate_device_token,
     list_devices,
     redeem_pairing_session,
-    set_push_token,
+    set_push_ticket,
 )
 from lios_relay.server_state import get_session
 
@@ -104,23 +104,23 @@ async def pair_device(
     return DevicePaired(device_id=device.id, device_token=token)
 
 
-@router.post("/{device_id}/push-token", status_code=status.HTTP_204_NO_CONTENT)
-async def update_push_token(
+@router.post("/{device_id}/push-ticket", status_code=status.HTTP_204_NO_CONTENT)
+async def update_push_ticket(
     device_id: uuid.UUID,
-    body: PushTokenUpdate,
+    body: PushTicketUpdate,
     session: Annotated[AsyncSession, Depends(get_session)],
     device: Annotated[Device, Depends(require_device)],
 ) -> None:
-    """Register an APNs token for `device_id` -- always the caller's own device.
+    """Store the push relay ticket for `device_id` -- always the caller's own device.
 
     `device_id` in the path must match the authenticated device: one device cannot register
-    a push token on another's behalf.
+    a push ticket on another's behalf.
     """
     if device.id != device_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="cannot set a push token for a different device",
+            detail="cannot set a push ticket for a different device",
         )
-    updated = await set_push_token(session, device_id, body.apns_token)
+    updated = await set_push_ticket(session, device_id, body.push_ticket)
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="device not found")

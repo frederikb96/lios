@@ -88,11 +88,6 @@ def pair_url(relay_url: str) -> str:
     return f"{_base(relay_url)}/api/devices/pair"
 
 
-def push_token_url(relay_url: str, device_id: str) -> str:
-    """`POST /api/devices/{id}/push-token`."""
-    return f"{_base(relay_url)}/api/devices/{quote(device_id, safe='')}/push-token"
-
-
 def auth_header(device_token: str) -> dict[str, str]:
     """The bearer-token `Authorization` header every endpoint but pairing itself requires."""
     return {"Authorization": f"Bearer {device_token}"}

@@ -52,31 +52,13 @@ spec:
           env:
             - name: LIOS_CONFIG_OVERRIDE_PATH
               value: {{ .Values.configOverridePath | quote }}
-            # Names match the `${VAR}` placeholders the image's bundled config/config.yaml
-            # already resolves every field from -- no config: override needed for these.
+            # Name matches the `${VAR}` placeholder the image's bundled config/config.yaml
+            # already resolves the database URL from -- no config: override needed.
             - name: LIOS_DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "lios.secretName" . }}
                   key: {{ .Values.existingSecretKeys.databaseUrl }}
-            - name: LIOS_APNS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "lios.secretName" . }}
-                  key: {{ .Values.existingSecretKeys.apnsKeyId }}
-                  optional: true
-            - name: LIOS_APNS_TEAM_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "lios.secretName" . }}
-                  key: {{ .Values.existingSecretKeys.apnsTeamId }}
-                  optional: true
-            - name: LIOS_APNS_AUTH_KEY_B64
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "lios.secretName" . }}
-                  key: {{ .Values.existingSecretKeys.apnsAuthKeyB64 }}
-                  optional: true
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

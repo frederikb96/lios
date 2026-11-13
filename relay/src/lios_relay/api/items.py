@@ -40,8 +40,9 @@ from lios_relay.database.repository import (
     list_items_since,
     list_other_device_ids,
     list_sent_items_since,
+    set_push_ticket,
 )
-from lios_relay.push import PushUnavailable, send_new_item_push
+from lios_relay.push import PushTarget, PushUnavailable, send_new_item_push
 from lios_relay.server_state import get_broadcaster, get_session
 
 logger = logging.getLogger(__name__)
@@ -180,25 +181,28 @@ async def _push_to_recipients(
     sender_device_id: uuid.UUID,
     sealed_preview: bytes | None,
 ) -> None:
-    """Best-effort APNs push to every recipient that is an iOS device with a push token.
+    """Best-effort push to every recipient that is an iOS device with a push ticket.
 
     Never raises: a push failure is logged and otherwise invisible to the caller of
     `POST /api/items`, since the item is already durably stored regardless of whether any
-    push goes out.
+    push goes out. A ticket the push relay reports dead is cleared, so the device is not
+    pushed to again until its app registers a new one.
     """
-    tokens: list[str] = []
+    targets: list[PushTarget] = []
     for recipient_id in recipient_ids:
         recipient = await get_device(session, recipient_id)
-        if recipient is not None and recipient.platform == "ios" and recipient.apns_token:
-            tokens.append(recipient.apns_token)
+        if recipient is not None and recipient.platform == "ios" and recipient.push_ticket:
+            targets.append(PushTarget(device_id=recipient.id, ticket=recipient.push_ticket))
 
-    if not tokens:
+    if not targets:
         return
     try:
-        await send_new_item_push(
-            config=config.apns, tokens=tokens, item_id=item_id,
+        dead = await send_new_item_push(
+            config=config.push, targets=targets, item_id=item_id,
             sender_device_id=sender_device_id, sealed_preview=sealed_preview,
         )
+        for device_id in dead:
+            await set_push_ticket(session, device_id, None)
     except PushUnavailable:
         pass
     except Exception:

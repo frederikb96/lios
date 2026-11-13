@@ -1,7 +1,7 @@
 # lios-relay
 
 The LIOS relay: a small FastAPI service that stores sealed item blobs, tracks which paired
-device has taken which one, expires everything on a retention policy, and rings an APNs
+device has taken which one, expires everything on a retention policy, and rings a push
 doorbell when the recipient is an iPhone. It never has the group key and can never read an
 item's content -- see [`lios-protocol`](../protocol) for the encryption itself.
 
@@ -20,7 +20,7 @@ All endpoints except `GET /health`, `GET /health/live`, `POST /api/devices/boots
 | POST | `/api/devices/bootstrap` | Register the very first device in an empty fleet -- no token required, refused once any device exists. |
 | POST | `/api/devices/pairing-sessions` | An already-paired device mints a fresh pairing code. |
 | POST | `/api/devices/pair` | Redeem a pairing code for a device token -- the one endpoint after bootstrap that needs no token. |
-| POST | `/api/devices/{id}/push-token` | Register an APNs token for the caller's own device. |
+| POST | `/api/devices/{id}/push-ticket` | Store the push relay ticket for the caller's own device. |
 | GET | `/health` / `/health/live` | Readiness / liveness, for the Kubernetes probes. |
 
 Every request/response shape is a `lios_protocol.wire` Pydantic model, shared with every
@@ -33,8 +33,8 @@ Every option, with its default and an explanation, lives in
 `config-custom/config.override.yaml`, then `LIOS_<SECTION>_<KEY>` environment variables --
 and the service refuses to start on anything missing rather than silently falling back.
 
-Push (`apns.*`) is the one section that may be entirely empty: the relay starts and serves
-every other endpoint fine with no APNs key configured, simply sending no push.
+Push (`push.relay_url`) may be empty: the relay then serves every other endpoint as usual and
+sends no push.
 
 ## Development
 

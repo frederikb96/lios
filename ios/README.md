@@ -9,8 +9,8 @@ The iPhone half of LIOS: a host app, a share extension and a notification servic
   Keychain-backed credential store, local history and the in-app log ring buffer. Builds and
   tests on Linux; only the parts guarded by `#if canImport(Security)` (the Keychain store) or
   `#if canImport(FoundationNetworking)` need an Apple platform or a Linux Foundation shim.
-- `LIOS/` — the host app target: SwiftUI views, push registration, and the notification-tap
-  receive path.
+- `LIOS/` — the host app target: SwiftUI views, push registration (APNs token to the shared push
+  relay, the returned ticket to the LIOS relay), and the notification-tap receive path.
 - `LIOSShare/` — the share extension. Registered for text, URLs, images and files; uploads
   directly from its own process rather than staging into a shared container.
 - `LIOSNotify/` — the notification service extension. Decrypts a small sealed preview attached

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from lios_relay.config.loader import (
-    ApnsConfig,
     ConfigError,
     DatabaseConfig,
     ItemsConfig,
     PairingConfig,
+    PushConfig,
     RelayConfig,
     RetentionConfig,
     ServerConfig,
@@ -16,11 +16,11 @@ from lios_relay.config.loader import (
 )
 
 __all__ = [
-    "ApnsConfig",
     "ConfigError",
     "DatabaseConfig",
     "ItemsConfig",
     "PairingConfig",
+    "PushConfig",
     "RelayConfig",
     "RetentionConfig",
     "ServerConfig",
