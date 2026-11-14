@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
 ### Changed
 
 - `POST /api/devices/bootstrap` is off by default and answers `403` until `pairing.bootstrap_enabled`
