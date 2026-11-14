@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from lios_protocol.pairing import generate_pairing_code
 from lios_protocol.wire import (
     DeviceBootstrap,
@@ -33,6 +33,7 @@ from lios_relay.database.repository import (
     redeem_pairing_session,
     set_push_ticket,
 )
+from lios_relay.pairing_guard import PairingGuard
 from lios_relay.server_state import get_session
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -44,10 +45,17 @@ async def bootstrap_first_device(
 ) -> DevicePaired:
     """Register the very first device in an otherwise-empty fleet. No token required.
 
-    Refused once any device already exists -- from that point on, every further device joins
-    through `POST /api/devices/pair`, which does require one. A freshly deployed relay with
-    zero paired devices is the only window this is ever reachable in.
+    Refused unless `pairing.bootstrap_enabled` is on, and once any device already exists --
+    from that point on, every further device joins through `POST /api/devices/pair`, which
+    does require a code. A freshly deployed relay with zero paired devices and the switch on
+    is the only window this is ever reachable in. Both refusals are `403`, which the clients
+    already read as "scan a pairing QR instead".
     """
+    if not get_config().pairing.bootstrap_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="bootstrap is disabled on this relay -- use POST /api/devices/pair instead",
+        )
     existing = await list_devices(session)
     if existing:
         raise HTTPException(
@@ -83,15 +91,28 @@ async def create_pairing_session_endpoint(
 
 @router.post("/pair", status_code=status.HTTP_201_CREATED)
 async def pair_device(
-    body: PairingRedeem, session: Annotated[AsyncSession, Depends(get_session)]
+    request: Request,
+    body: PairingRedeem,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DevicePaired:
     """Redeem a pairing code for a new device token. The one endpoint that needs no token.
 
     A code that never existed, already expired, or was already redeemed all answer the same
-    401 -- see `redeem_pairing_session`'s own doc comment for why.
+    401 -- see `redeem_pairing_session`'s own doc comment for why. Too many refusals within
+    `pairing.lockout_seconds` lock the endpoint with a `429` and a `Retry-After`, whichever
+    code is sent.
     """
+    guard: PairingGuard = request.app.state.pairing_guard
+    retry_after = guard.retry_after()
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many refused pairing codes -- try again later",
+            headers={"Retry-After": str(retry_after)},
+        )
     pairing_session = await redeem_pairing_session(session, body.pairing_code)
     if pairing_session is None:
+        guard.record_failure()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="pairing code is invalid, expired, or already used",

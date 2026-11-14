@@ -121,6 +121,10 @@ async def create_item_endpoint(
         raise HTTPException(
             status_code=status.HTTP_411_LENGTH_REQUIRED, detail="Content-Length is required"
         )
+    if not content_length.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Content-Length is not a number"
+        )
     if int(content_length) > config.items.max_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,

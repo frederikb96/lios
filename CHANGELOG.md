@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `POST /api/devices/bootstrap` is off by default and answers `403` until `pairing.bootstrap_enabled`
+  (`LIOS_PAIRING_BOOTSTRAP_ENABLED`) is turned on, so an emptied database cannot be claimed by
+  the first caller. Turn it on only while pairing the first device of a fresh relay.
+- `POST /api/devices/pair` answers `429` with `Retry-After` once `pairing.max_failed_redeems`
+  codes were refused within `pairing.lockout_seconds`.
+- The OpenAPI schema and the interactive docs are no longer served unless
+  `server.expose_api_docs` is on.
+- A non-numeric `Content-Length` on an item upload answers `400` instead of a server error.
+
 ## [0.2.0] - 2026-11-13
 
 ### Changed

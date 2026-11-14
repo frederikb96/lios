@@ -176,6 +176,15 @@ async def test_create_rejects_empty_body(client: AsyncClient, laptop_token: str)
     assert resp.status_code == 400
 
 
+async def test_create_rejects_a_non_numeric_content_length(
+    client: AsyncClient, laptop_token: str
+) -> None:
+    headers = _item_headers(laptop_token)
+    headers["Content-Length"] = "not-a-number"
+    resp = await client.post("/api/items", content=b"sealed", headers=headers)
+    assert resp.status_code == 400
+
+
 async def test_create_rejects_oversized_item(client: AsyncClient, laptop_token: str) -> None:
     oversized = b"x" * (26214400 + 1)
     resp = await client.post(

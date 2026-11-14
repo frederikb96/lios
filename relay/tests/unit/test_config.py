@@ -62,3 +62,16 @@ def test_push_is_disabled_by_an_empty_relay_url(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("LIOS_PUSH_RELAY_URL", "")
     config = get_config()
     assert config.push.enabled is False
+
+
+def test_the_public_doors_are_closed_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIOS_DATABASE_URL", "postgresql://user:pass@localhost/lios")
+    config = get_config()
+    assert config.server.expose_api_docs is False
+    assert config.pairing.bootstrap_enabled is False
+
+
+def test_bootstrap_is_switched_on_by_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIOS_DATABASE_URL", "postgresql://user:pass@localhost/lios")
+    monkeypatch.setenv("LIOS_PAIRING_BOOTSTRAP_ENABLED", "true")
+    assert get_config().pairing.bootstrap_enabled is True

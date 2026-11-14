@@ -21,6 +21,7 @@ from starlette.types import ASGIApp
 from lios_relay.api import all_routers
 from lios_relay.config import get_config
 from lios_relay.database import close_database, init_database
+from lios_relay.pairing_guard import PairingGuard
 from lios_relay.retention import RetentionTask
 from lios_relay.server_state import reset_broadcaster
 
@@ -59,7 +60,17 @@ def create_app() -> ASGIApp:
     config = get_config()
     # Read off the installed distribution rather than restated here, so what a deployed
     # relay reports as its version cannot drift from the artifact actually running.
-    app = FastAPI(title="LIOS Relay", version=version("lios-relay"), lifespan=lifespan)
+    app = FastAPI(
+        title="LIOS Relay",
+        version=version("lios-relay"),
+        lifespan=lifespan,
+        docs_url="/docs" if config.server.expose_api_docs else None,
+        redoc_url="/redoc" if config.server.expose_api_docs else None,
+        openapi_url="/openapi.json" if config.server.expose_api_docs else None,
+    )
+    app.state.pairing_guard = PairingGuard(
+        config.pairing.max_failed_redeems, config.pairing.lockout_seconds
+    )
 
     app.add_middleware(
         CORSMiddleware,
