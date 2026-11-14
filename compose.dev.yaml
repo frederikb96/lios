@@ -18,6 +18,8 @@ services:
       - ./relay/alembic.ini:/app/relay/alembic.ini:ro,Z
     environment:
       LIOS_DATABASE_URL: "postgresql+asyncpg://devuser:${POSTGRES_PASSWORD}@postgres:5432/lios_dev"
+      LIOS_PAIRING_BOOTSTRAP_ENABLED: "true"
+      LIOS_SERVER_EXPOSE_API_DOCS: "true"
     depends_on:
       postgres:
         condition: service_healthy

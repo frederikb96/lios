@@ -171,6 +171,7 @@ class ServerConfig(BaseModel):
     port: int
     log_level: str
     cors_origins: list[str] = Field(default_factory=list)
+    expose_api_docs: bool
 
 
 class DatabaseConfig(BaseModel):
@@ -207,9 +208,12 @@ class RetentionConfig(BaseModel):
 
 
 class PairingConfig(BaseModel):
-    """Pairing-code lifetime."""
+    """Pairing-code lifetime, the first-device door and the guess limit on redeeming."""
 
     code_ttl_seconds: int
+    bootstrap_enabled: bool
+    max_failed_redeems: int
+    lockout_seconds: int
 
 
 class PushConfig(BaseModel):

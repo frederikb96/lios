@@ -17,9 +17,9 @@ All endpoints except `GET /health`, `GET /health/live`, `POST /api/devices/boots
 | GET | `/api/items?since=` | Catch-up list of `ItemSummary` (clear metadata only) created after the given timestamp. |
 | DELETE | `/api/items/{id}` | A device acknowledging it has taken an item. |
 | GET | `/api/stream` | WebSocket; announces each new item as it arrives. See `lios_relay.api.stream`'s module docstring for the reconnect contract. |
-| POST | `/api/devices/bootstrap` | Register the very first device in an empty fleet -- no token required, refused once any device exists. |
+| POST | `/api/devices/bootstrap` | Register the very first device in an empty fleet -- no token required, refused (`403`) unless `pairing.bootstrap_enabled` is on and once any device exists. |
 | POST | `/api/devices/pairing-sessions` | An already-paired device mints a fresh pairing code. |
-| POST | `/api/devices/pair` | Redeem a pairing code for a device token -- the one endpoint after bootstrap that needs no token. |
+| POST | `/api/devices/pair` | Redeem a pairing code for a device token -- the one endpoint after bootstrap that needs no token. Answers `429` with `Retry-After` for `pairing.lockout_seconds` once `pairing.max_failed_redeems` codes were refused. |
 | POST | `/api/devices/{id}/push-ticket` | Store the push relay ticket for the caller's own device. |
 | GET | `/health` / `/health/live` | Readiness / liveness, for the Kubernetes probes. |
 
@@ -32,6 +32,9 @@ Every option, with its default and an explanation, lives in
 [`config/config.yaml`](config/config.yaml). Config loads from that file, then a sparse
 `config-custom/config.override.yaml`, then `LIOS_<SECTION>_<KEY>` environment variables --
 and the service refuses to start on anything missing rather than silently falling back.
+
+The OpenAPI schema and the interactive docs (`/docs`, `/redoc`, `/openapi.json`) are off unless
+`server.expose_api_docs` is on; [`docs/api.md`](../docs/api.md) is the contract.
 
 Push (`push.relay_url`) may be empty: the relay then serves every other endpoint as usual and
 sends no push.

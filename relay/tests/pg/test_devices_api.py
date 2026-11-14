@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from lios_relay.config import get_config
 from tests.pg.conftest import auth_headers
 
 
@@ -114,3 +115,44 @@ async def test_cannot_set_push_ticket_for_a_different_device(
         headers=auth_headers(phone_token),
     )
     assert resp.status_code == 403
+
+
+async def test_bootstrap_is_refused_while_switched_off(client: AsyncClient) -> None:
+    get_config().pairing.bootstrap_enabled = False
+    resp = await client.post(
+        "/api/devices/bootstrap", json={"platform": "linux", "display_name": "First Laptop"}
+    )
+    assert resp.status_code == 403
+    assert "disabled" in resp.json()["detail"]
+
+
+async def test_pairing_locks_after_too_many_refused_codes(client: AsyncClient) -> None:
+    limit = get_config().pairing.max_failed_redeems
+    body = {"pairing_code": "ABCDEFGH", "platform": "ios", "display_name": "Probe"}
+    for _ in range(limit):
+        assert (await client.post("/api/devices/pair", json=body)).status_code == 401
+    locked = await client.post("/api/devices/pair", json=body)
+    assert locked.status_code == 429
+    assert int(locked.headers["retry-after"]) > 0
+
+
+async def test_a_valid_code_is_refused_while_locked(
+    client: AsyncClient, laptop_token: str
+) -> None:
+    session_resp = await client.post(
+        "/api/devices/pairing-sessions", headers=auth_headers(laptop_token)
+    )
+    code = session_resp.json()["pairing_code"]
+    wrong = {"pairing_code": "ABCDEFGH", "platform": "ios", "display_name": "Probe"}
+    for _ in range(get_config().pairing.max_failed_redeems):
+        await client.post("/api/devices/pair", json=wrong)
+    resp = await client.post(
+        "/api/devices/pair",
+        json={"pairing_code": code, "platform": "ios", "display_name": "New iPhone"},
+    )
+    assert resp.status_code == 429
+
+
+async def test_api_docs_are_not_served(client: AsyncClient) -> None:
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert (await client.get(path)).status_code == 404

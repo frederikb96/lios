@@ -78,6 +78,8 @@ async def migrated_db(postgres_url: str) -> AsyncIterator[DatabaseConnection]:
     """
     await run_migrations(postgres_url)
     os.environ["LIOS_DATABASE_URL"] = postgres_url
+    # The first-device door is off by default; most tests start from an empty fleet through it.
+    os.environ["LIOS_PAIRING_BOOTSTRAP_ENABLED"] = "true"
     reset_config()
 
     db = await init_database_for_url(postgres_url)
@@ -89,6 +91,7 @@ async def migrated_db(postgres_url: str) -> AsyncIterator[DatabaseConnection]:
         yield db
     finally:
         await close_database()
+        os.environ.pop("LIOS_PAIRING_BOOTSTRAP_ENABLED", None)
         reset_config()
 
 

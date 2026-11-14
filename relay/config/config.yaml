@@ -12,6 +12,10 @@ server:
   port: 8080
   log_level: INFO
   cors_origins: []            # same-origin serving by default; empty disables CORS
+  # Serve FastAPI's interactive docs and the OpenAPI schema (/docs, /redoc, /openapi.json).
+  # Off, those routes answer 404: the relay is reachable from the internet and the schema
+  # describes every route to anyone who asks.
+  expose_api_docs: false
 
 database:
   url: "${LIOS_DATABASE_URL}"
@@ -33,6 +37,14 @@ retention:
 pairing:
   # How long a pairing code minted by POST /api/devices/pairing-sessions stays redeemable.
   code_ttl_seconds: 600
+  # POST /api/devices/bootstrap registers the first device without a token, so whoever calls it
+  # on an empty relay owns the fleet. Off, it answers 403; turn it on only while pairing the
+  # first device of a fresh relay.
+  bootstrap_enabled: false
+  # POST /api/devices/pair answers 429 once this many codes were refused within the last
+  # lockout_seconds, counted over every caller. A code is short, so this keeps guessing slow.
+  max_failed_redeems: 10
+  lockout_seconds: 300
 
 # Push for iOS devices, sent through the shared push relay (a separate service that holds the
 # Apple credential). The relay never learns an item's content: it forwards a small blob to

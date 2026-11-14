@@ -40,7 +40,9 @@ podman compose --env-file .prod.env up -d
 ```
 
 The relay is then on <http://localhost:8080>. Pair your first device against `POST
-/api/devices/bootstrap`; every device after that pairs by scanning a QR code an
+/api/devices/bootstrap`, which is off by default: set `pairing.bootstrap_enabled: true` in
+`relay/config-custom/config.override.yaml` (or `LIOS_PAIRING_BOOTSTRAP_ENABLED=true`) while you
+pair it, then switch it off again. Every device after that pairs by scanning a QR code an
 already-paired device generates. See [`relay/README.md`](relay/README.md) for the full API.
 
 For development -- hot reload, a throwaway Postgres -- see
@@ -85,6 +87,7 @@ relay with no credential on your side (`push.relay_url`; empty turns push off).
 | `LIOS_DATABASE_URL` | PostgreSQL connection |
 | `POSTGRES_PASSWORD` | Database password, used by compose |
 | `LIOS_PUSH_RELAY_URL` | Push relay for iOS devices (optional; empty disables push) |
+| `LIOS_PAIRING_BOOTSTRAP_ENABLED` | `true` only while pairing the first device of a fresh relay |
 
 ## Retention
 

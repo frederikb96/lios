@@ -31,5 +31,7 @@ cluster; use port-forward above, or set ingress.enabled=true with a host once yo
 ingress controller.
 {{- end }}
 
-Pair your first device against `POST /api/devices/bootstrap` -- see the root README for the
-full API and the pairing flow every device after the first goes through instead.
+Pair your first device against `POST /api/devices/bootstrap` -- it answers 403 until you set
+pairing.bootstrap_enabled (config.pairing.bootstrap_enabled in values, or LIOS_PAIRING_BOOTSTRAP_ENABLED)
+and should be switched off again afterwards. See the root README for the full API and the pairing
+flow every device after the first goes through instead.
